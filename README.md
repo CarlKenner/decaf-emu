@@ -11,6 +11,7 @@ You can find us for developer discussion at #wiiu-emu on freenode.
 - 64 bit
 - OpenGL 4.5
 - CMake v3.2+
+- Oculus SDK 1.9.0
 
 ## Compatibility
 - None
@@ -26,6 +27,9 @@ The latest Windows AppVeyor build is available from:
 
 This project makes use of submodules, please ensure you have cloned them properly using:
 - `git submodule update --init`
+
+Go to https://developer.oculus.com/downloads/pc/1.9.0/Oculus_SDK_for_Windows/ then download and extract it somewhere. 
+	Copy the LibOVR folder to decaf-emu/libraries
 
 There are two decaf targets:
 - decaf-sdl - Default emulator target using SDL for window creation and input.
@@ -43,6 +47,8 @@ There are two decaf targets:
 ## Running
 
 `./decaf-sdl play <path to game>`
+
+If the game is in loadiine format, use the path to the .rpx file in the code folder.
 
 It is recommend to run the emulator from the root git directory so that it is able to access `resources/fonts/*`
 

@@ -8,3 +8,4 @@ mlc/
 *.rpx
 *.o
 !tests/hle/bin/*.rpx
+/libraries/LibOVR

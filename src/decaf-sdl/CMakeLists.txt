@@ -11,6 +11,51 @@ else()
    set(RESOURCE_FILES "")
 endif()
 
+include_directories(${CMAKE_SOURCE_DIR}/libraries/LibOVR/include)
+			
+if(CMAKE_CL_64)
+	link_directories(
+			${CMAKE_SOURCE_DIR}/libraries/LibOVR/Lib/Windows/x64/Release/VS2015
+			${CMAKE_SOURCE_DIR}/libraries/LibOVR/Lib/x64/VS2015)
+						
+	set(LibOVR_LIBRARIES
+		libovr.lib
+		ws2_32.lib)
+					
+else()
+	link_directories(
+			${CMAKE_CURRENT_SOURCE_DIR}/libs/LibOVR/Lib/Windows/Win32/Release/VS2015
+			${CMAKE_CURRENT_SOURCE_DIR}/libs/LibOVR/Lib/Win32/VS2015)
+					
+		set(LibOVR_LIBRARIES
+		libovr.lib
+		ws2_32.lib)
+		
+endif()
+
+if(WIN32)
+	if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+		link_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/openvr/lib/win32)
+	else()
+		link_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/openvr/lib/win64)
+	endif()
+endif(WIN32)
+
+if(UNIX)
+	if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+		link_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/openvr/lib/linux32)
+	else()
+		link_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/openvr/lib/linux64)
+	endif()
+endif(UNIX)
+
+if(APPLE)
+	link_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/openvr/lib/osx32)
+endif(APPLE)
+
+set(OPENVR_LIBRARY "openvr_api")
+include_directories("libs/openvr/headers")
+
 add_executable(decaf-sdl
    ${SOURCE_FILES}
    ${HEADER_FILES}
