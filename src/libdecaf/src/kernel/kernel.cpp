@@ -1,6 +1,8 @@
 #include "kernel.h"
 #include "kernel_hle.h"
 #include "kernel_internal.h"
+#include "kernel_ios.h"
+#include "kernel_ipc.h"
 #include "kernel_loader.h"
 #include "kernel_memory.h"
 #include "kernel_filesystem.h"
@@ -11,21 +13,20 @@
 #include <common/platform_thread.h>
 #include "modules/coreinit/coreinit.h"
 #include "modules/coreinit/coreinit_alarm.h"
+#include "modules/coreinit/coreinit_appio.h"
 #include "modules/coreinit/coreinit_core.h"
 #include "modules/coreinit/coreinit_enum.h"
-#include "modules/coreinit/coreinit_fs.h"
 #include "modules/coreinit/coreinit_memheap.h"
 #include "modules/coreinit/coreinit_scheduler.h"
 #include "modules/coreinit/coreinit_systeminfo.h"
 #include "modules/coreinit/coreinit_thread.h"
 #include "modules/coreinit/coreinit_interrupts.h"
-#include "modules/coreinit/coreinit_internal_appio.h"
-#include "modules/nn_save/nn_save_dir.h"
 #include "modules/gx2/gx2_event.h"
 #include "libcpu/mem.h"
 #include "ppcutils/wfunc_call.h"
 #include <common/decaf_assert.h>
 #include <common/teenyheap.h>
+#include <common/platform_dir.h>
 #include <pugixml.hpp>
 
 namespace coreinit
@@ -107,6 +108,8 @@ setExecutableFilename(const std::string& name)
 void
 initialise()
 {
+   ipcStart();
+   iosInitDevices();
    initialiseHleMmodules();
    cpu::setCoreEntrypointHandler(&cpuEntrypoint);
    cpu::setSegfaultHandler(&cpuSegfaultHandler);
@@ -118,6 +121,12 @@ initialise()
    }
 
    sSystemHeap = new TeenyHeap(mem::translate(mem::SystemBase), mem::SystemSize);
+}
+
+void
+shutdown()
+{
+   ipcShutdown();
 }
 
 TeenyHeap *
@@ -280,8 +289,8 @@ cpuInterruptHandler(uint32_t interrupt_flags)
       gx2::internal::handleGpuFlipInterrupt();
    }
 
-   if (interrupt_flags & cpu::FS_DONE_INTERRUPT) {
-      coreinit::internal::handleFsDoneInterrupt();
+   if (interrupt_flags & cpu::IPC_INTERRUPT) {
+      kernel::ipcDriverKernelHandleInterrupt();
    }
 
    coreinit::internal::enableScheduler();
@@ -399,6 +408,23 @@ launchGame()
 
    // Set mlc/usr to ReadWrite
    fileSystem->setPermissions("/vol/storage_mlc01/usr", fs::Permissions::ReadWrite, fs::PermissionFlags::Recursive);
+
+   // Mount SD card if game has permission to use it
+   if ((sGameInfo.cos.permission_fs & decaf::CosXML::SdCardRead) ||
+       (sGameInfo.cos.permission_fs & decaf::CosXML::SdCardWrite)) {
+      // Ensure sdcard_path exists
+      platform::createDirectory(decaf::config::system::sdcard_path);
+
+      // Mount sdcard
+      auto sdcardPath = fs::HostPath { decaf::config::system::sdcard_path };
+      auto permission = fs::Permissions::Read;
+
+      if (sGameInfo.cos.permission_fs & decaf::CosXML::SdCardWrite) {
+         permission = fs::Permissions::ReadWrite;
+      }
+
+      fileSystem->mountHostFolder("/dev/sdcard01", sdcardPath, permission);
+   }
 
    // We need to set some default stuff up...
    auto core = cpu::this_core::state();

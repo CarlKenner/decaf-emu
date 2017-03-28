@@ -99,6 +99,12 @@ public:
       mState = CaptureState::WaitEndNextFrame;
    }
 
+   void
+   setCaptureNumFrames(size_t count)
+   {
+      mCaptureNumFrames = count;
+   }
+
    CaptureState
    state() const
    {
@@ -112,15 +118,23 @@ public:
 
       if (mState == CaptureState::WaitStartNextFrame) {
          start();
+         mCapturedFrames = 0;
       } else if (mState == CaptureState::WaitEndNextFrame) {
          stop();
+         mCaptureNumFrames = 0;
+      }
+
+      ++mCapturedFrames;
+
+      if (mCapturedFrames == mCaptureNumFrames) {
+         mState = CaptureState::WaitEndNextFrame;
       }
    }
 
    void
    commandBuffer(pm4::Buffer *buffer)
    {
-      decaf_check(mState == CaptureState::Enabled);
+      decaf_check(mState == CaptureState::Enabled || mState == CaptureState::WaitEndNextFrame);
       std::unique_lock<std::mutex> lock { mMutex };
       auto size = buffer->curSize * 4;
       scanCommandBuffer(buffer->buffer, buffer->curSize);
@@ -136,7 +150,7 @@ public:
    cpuFlush(void *buffer,
             uint32_t size)
    {
-      decaf_check(mState == CaptureState::Enabled);
+      decaf_check(mState == CaptureState::Enabled || mState == CaptureState::WaitEndNextFrame);
       std::unique_lock<std::mutex> lock { mMutex };
       auto addr = mem::untranslate(buffer);
       trackMemory(CaptureMemoryLoad::CpuFlush, addr, size);
@@ -146,7 +160,7 @@ public:
    gpuFlush(void *buffer,
             uint32_t size)
    {
-      decaf_check(mState == CaptureState::Enabled);
+      decaf_check(mState == CaptureState::Enabled || mState == CaptureState::WaitEndNextFrame);
       // Not sure if we need to do something here...
    }
 
@@ -858,6 +872,8 @@ private:
    std::ofstream mOut;
    std::vector<RecordedMemory> mRecordedMemory;
    std::array<uint32_t, 0x10000> mRegisters;
+   size_t mCapturedFrames = 0;
+   size_t mCaptureNumFrames = 0;
 };
 
 static Recorder
@@ -894,6 +910,13 @@ captureStopAtNextSwap()
    gRecorder.requestStop();
 }
 
+bool
+captureNextFrame()
+{
+   gRecorder.setCaptureNumFrames(1);
+   return captureStartAtNextSwap();
+}
+
 CaptureState
 captureState()
 {
@@ -903,7 +926,7 @@ captureState()
 void
 captureSwap()
 {
-   if (pm4::captureState() == pm4::CaptureState::WaitStartNextFrame) {
+   if (captureState() == pm4::CaptureState::WaitStartNextFrame) {
       pm4::write(pm4::DecafCapSyncRegisters {});
    }
 
@@ -916,7 +939,8 @@ captureSwap()
 void
 captureCommandBuffer(pm4::Buffer *buffer)
 {
-   if (captureState() == CaptureState::Enabled) {
+   if (captureState() == CaptureState::Enabled ||
+       captureState() == CaptureState::WaitEndNextFrame) {
       gRecorder.commandBuffer(buffer);
    }
 }
@@ -925,7 +949,8 @@ void
 captureCpuFlush(void *buffer,
                 uint32_t size)
 {
-   if (captureState() == CaptureState::Enabled) {
+   if (captureState() == CaptureState::Enabled ||
+       captureState() == CaptureState::WaitEndNextFrame) {
       gRecorder.cpuFlush(buffer, size);
    }
 }
@@ -934,7 +959,8 @@ void
 captureGpuFlush(void *buffer,
                 uint32_t size)
 {
-   if (captureState() == CaptureState::Enabled) {
+   if (captureState() == CaptureState::Enabled ||
+       captureState() == CaptureState::WaitEndNextFrame) {
       gRecorder.gpuFlush(buffer, size);
    }
 }

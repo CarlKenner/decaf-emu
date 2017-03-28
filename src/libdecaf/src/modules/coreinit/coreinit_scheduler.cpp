@@ -5,6 +5,7 @@
 #include "coreinit_core.h"
 #include "coreinit_scheduler.h"
 #include "coreinit_interrupts.h"
+#include "coreinit_ipc.h"
 #include "coreinit_event.h"
 #include "coreinit_fastmutex.h"
 #include "coreinit_memexpheap.h"
@@ -49,6 +50,9 @@ sCorePauseTime[3];
 
 static std::array<be_ptr<MEMHeapHeader> *, 3>
 sMemoryHeapPointers = { nullptr, nullptr, nullptr };
+
+static OSThreadEntryPointFn
+sDefaultThreadEntryPoint = nullptr;
 
 namespace internal
 {
@@ -640,12 +644,22 @@ void startDefaultCoreThreads()
       auto stack = reinterpret_cast<uint8_t*>(coreinit::internal::sysAlloc(stackSize, 8));
       auto name = coreinit::internal::sysStrDup(fmt::format("Default Thread {}", i));
 
-      coreinit::OSCreateThread(thread, 0u, 0, nullptr,
+      coreinit::OSCreateThread(thread, sDefaultThreadEntryPoint, i, nullptr,
          reinterpret_cast<be_val<uint32_t>*>(stack + stackSize), stackSize, 16,
          static_cast<coreinit::OSThreadAttributes>(1 << i));
       coreinit::internal::setDefaultThread(i, thread);
       coreinit::OSSetThreadName(thread, name);
+      coreinit::OSResumeThread(thread);
    }
+}
+
+uint32_t
+defaultThreadEntry(uint32_t coreId,
+                   void *argv)
+{
+   coreinit::IPCDriverInit();
+   coreinit::IPCDriverOpen();
+   return 0;
 }
 
 } // namespace internal
@@ -717,6 +731,7 @@ GameThreadEntry(uint32_t argc, void *argv)
 void
 Module::registerSchedulerFunctions()
 {
+   RegisterInternalFunction(internal::defaultThreadEntry, sDefaultThreadEntryPoint);
    RegisterKernelFunction(GameThreadEntry);
    RegisterInternalData(sMemoryHeapPointers);
 }

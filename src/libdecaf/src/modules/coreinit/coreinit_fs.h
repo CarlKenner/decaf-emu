@@ -1,27 +1,14 @@
 #pragma once
 #include "coreinit_enum.h"
 #include "coreinit_messagequeue.h"
-#include "ppcutils/wfunc_ptr.h"
 
-#include <common/be_val.h>
-#include <common/structsize.h>
 #include <cstdint>
-#include <functional>
-
-namespace coreinit
-{
-
-/**
- * \defgroup coreinit_fs Filesystem
- * \ingroup coreinit
- */
-
-using FSDirectoryHandle = uint32_t;
-using FSFileHandle = uint32_t;
-using FSPriority = uint32_t;
+#include <common/be_val.h>
+#include <common/be_ptr.h>
+#include <common/structsize.h>
 
 /*
-Unimplemented filesystem functions:
+Unimplemented functions:
 FSAppendFile
 FSAppendFileAsync
 FSBindMount
@@ -33,144 +20,229 @@ FSCancelCommand
 FSChangeMode
 FSChangeModeAsync
 FSDumpLastErrorLog
-FSFlushFile
-FSFlushFileAsync
 FSFlushMultiQuota
 FSFlushMultiQuotaAsync
-FSFlushQuota
-FSFlushQuotaAsync
-FSGetCmdPriority
-FSGetCurrentCmdBlock
-FSGetCwdAsync
-FSGetDirSize
-FSGetDirSizeAsync
-FSGetEmulatedError
 FSGetEntryNum
 FSGetEntryNumAsync
-FSGetFSMessage
 FSGetFileBlockAddress
 FSGetFileBlockAddressAsync
 FSGetFileSystemInfo
 FSGetFileSystemInfoAsync
-FSGetFreeSpaceSize
-FSGetFreeSpaceSizeAsync
-FSGetLastError
-FSGetMountSource
-FSGetMountSourceAsync
-FSGetMountSourceNext
-FSGetMountSourceNextAsync
-FSGetStateChangeInfo
-FSGetUserData
 FSGetVolumeInfo
 FSGetVolumeInfoAsync
 FSMakeLink
 FSMakeLinkAsync
 FSMakeQuota
 FSMakeQuotaAsync
-FSMount
-FSMountAsync
 FSOpenFileByStat
 FSOpenFileByStatAsync
-FSOpenFileEx
-FSOpenFileExAsync
 FSRegisterFlushQuota
 FSRegisterFlushQuotaAsync
-FSRemove
-FSRemoveAsync
 FSRemoveQuota
 FSRemoveQuotaAsync
 FSRollbackQuota
 FSRollbackQuotaAsync
-FSSetEmulatedError
-FSSetUserData
 FSTimeToCalendarTime
-FSUnmount
-FSUnmountAsync
 */
+
+namespace coreinit
+{
+
+/**
+ * \defgroup coreinit_fs Filesystem
+ * \ingroup coreinit
+ *
+ * The typical flow of a FS command looks like:
+ *
+ * {Game thread} FSOpenFileExAsync
+ *    -> fsClientSubmitCommand (fsCmdBlockFinishCmd)
+ *       -> fsCmdQueueProcessMsg
+ *          -> fsClientHandleDequeuedCommand
+ *             -> fsaShimSubmitRequestAsync
+ *                -> IOS_IoctlAsync (fsClientHandleFsaAsyncCallback)
+ *
+ * {IPC interrupt} fsClientHandleFsaAsyncCallback
+ *    -> SendMessage AppIOQueue FsCmdHandler
+ *
+ * {AppIo thread} receive FsCmdHandler
+ *    -> fsCmdBlockHandleResult
+ *       -> fsCmdBlockReplyResult
+ *          -> blockBody->finishCmdFn (fsCmdBlockFinishCmd)
+ *             -> fsCmdBlockSetResult
+ *                -> SendMessage asyncData.ioMsgQueue FsCmdAsync
+ *
+ * {AppIo thread} receive FsCmdAsync
+ *    -> FSGetAsyncResult(msg)->userParams.callback
+ *
+ * @{
+ */
 
 #pragma pack(push, 1)
 
-class FSClient;
+struct FSClient;
+struct FSClientBody;
 struct FSCmdBlock;
+struct FSCmdBlockBody;
 
+struct FSAsyncData;
+struct FSAsyncResult;
+struct FSMessage;
+
+struct FSDirEntry;
+struct FSStat;
+struct FSMountSource;
+
+using FSDirHandle = uint32_t;
+using FSEntryNum = uint32_t;
+using FSFileHandle = uint32_t;
+using FSFilePosition = uint32_t;
+using FSAsyncCallbackFn = wfunc_ptr<void, FSClient *, FSCmdBlock *, FSStatus, void *>;
+
+static constexpr uint32_t
+FSMaxBytesPerRequest = 0x100000;
+
+static constexpr uint32_t
+FSMaxPathLength = 0x27F;
+
+static constexpr uint32_t
+FSMaxMountPathLength = 0x80;
+
+static constexpr uint32_t
+FSMinPriority = 0;
+
+static constexpr uint32_t
+FSDefaultPriority = 16;
+
+static constexpr uint32_t
+FSMaxPriority = 32;
+
+struct FSMessage
+{
+   //! Message data
+   be_ptr<void> data;
+
+   UNKNOWN(8);
+
+   //! Type of message
+   be_val<OSFunctionType> type;
+};
+CHECK_OFFSET(FSMessage, 0x00, data);
+CHECK_OFFSET(FSMessage, 0x0C, type);
+CHECK_SIZE(FSMessage, 0x10);
+
+
+/**
+ * Async data passed to an FS*Async function.
+ */
 struct FSAsyncData
 {
-   be_val<uint32_t> callback;
-   be_val<uint32_t> param;
-   be_ptr<OSMessageQueue> queue;
+   //! Callback to call when the command is complete.
+   FSAsyncCallbackFn::be userCallback;
+
+   //! Callback context
+   be_ptr<void> userContext;
+
+   //! Queue to put a message on when command is complete.
+   be_ptr<OSMessageQueue> ioMsgQueue;
 };
-CHECK_OFFSET(FSAsyncData, 0x00, callback);
-CHECK_OFFSET(FSAsyncData, 0x04, param);
-CHECK_OFFSET(FSAsyncData, 0x08, queue);
+CHECK_OFFSET(FSAsyncData, 0x00, userCallback);
+CHECK_OFFSET(FSAsyncData, 0x04, userContext);
+CHECK_OFFSET(FSAsyncData, 0x08, ioMsgQueue);
 CHECK_SIZE(FSAsyncData, 0xC);
 
+
+/**
+ * Stores the result of an async FS command.
+ */
 struct FSAsyncResult
 {
-   FSAsyncData userParams;
-   OSMessage ioMsg;
+   //! User supplied async data.
+   FSAsyncData asyncData;
+
+   //! Message to put into asyncdata.ioMsgQueue.
+   FSMessage ioMsg;
+
+   //! FSClient which owns this result.
    be_ptr<FSClient> client;
+
+   //! FSCmdBlock which owns this result.
    be_ptr<FSCmdBlock> block;
-   FSStatus status;
+
+   //! The result of the command.
+   be_val<FSStatus> status;
 };
-CHECK_OFFSET(FSAsyncResult, 0x00, userParams);
+CHECK_OFFSET(FSAsyncResult, 0x00, asyncData);
 CHECK_OFFSET(FSAsyncResult, 0x0c, ioMsg);
 CHECK_OFFSET(FSAsyncResult, 0x1c, client);
 CHECK_OFFSET(FSAsyncResult, 0x20, block);
 CHECK_OFFSET(FSAsyncResult, 0x24, status);
 CHECK_SIZE(FSAsyncResult, 0x28);
 
-struct FSCmdBlock
+
+/**
+ * File System information.
+ */
+struct FSFileSystemInfo
 {
-   static const unsigned MaxPathLength = 0x280;
-   static const unsigned MaxModeLength = 0x10;
-
-   // HACK: We store our own stuff into PPC memory...  This is
-   //  especially bad as std::function is not really meant to be
-   //  randomly memset...
-   uint32_t priority;
-   FSAsyncResult result;
-   std::function<FSStatus()> func;
-   OSMessageQueue syncQueue;
-   OSMessage syncQueueMsgs[1];
-   char path[MaxPathLength];
-   char mode[MaxModeLength];
-   char path2[MaxPathLength];
-   be_ptr<void> userData;
-   UNKNOWN(0x4F4 - sizeof(std::function<FSStatus()>));
+   UNKNOWN(0x1C);
 };
-CHECK_SIZE(FSCmdBlock, 0xa80);
+CHECK_SIZE(FSFileSystemInfo, 0x1C);
 
+
+/**
+ * Information about a mount.
+ */
+struct FSMountSource
+{
+   be_val<FSMountSourceType> sourceType;
+   char path[FSMaxPathLength];
+};
+CHECK_OFFSET(FSMountSource, 0x0, sourceType);
+CHECK_OFFSET(FSMountSource, 0x4, path);
+CHECK_SIZE(FSMountSource, 0x283);
+
+
+/**
+ * Structure used by FSGetStat to return information about a file or directory.
+ */
 struct FSStat
 {
-   enum Flags
-   {
-      Directory = 0x80000000,
-   };
-
-   be_val<uint32_t> flags;
-   UNKNOWN(0xc);
+   be_val<FSStatFlags> flags;
+   be_val<uint32_t> permission;
+   be_val<uint32_t> owner;
+   be_val<uint32_t> group;
    be_val<uint32_t> size;
-   UNKNOWN(0x50);
+   UNKNOWN(0xC);
+   be_val<uint32_t> entryId;
+   be_val<OSTime> created;
+   be_val<OSTime> modified;
+   UNKNOWN(0x30);
 };
 CHECK_OFFSET(FSStat, 0x00, flags);
+CHECK_OFFSET(FSStat, 0x04, permission);
+CHECK_OFFSET(FSStat, 0x08, owner);
+CHECK_OFFSET(FSStat, 0x0C, group);
 CHECK_OFFSET(FSStat, 0x10, size);
+CHECK_OFFSET(FSStat, 0x20, entryId);
+CHECK_OFFSET(FSStat, 0x24, created);
+CHECK_OFFSET(FSStat, 0x2C, modified);
 CHECK_SIZE(FSStat, 0x64);
 
-struct FSStateChangeInfo
-{
-   UNKNOWN(0xC);
-};
-CHECK_SIZE(FSStateChangeInfo, 0xC);
 
-struct FSDirectoryEntry
+/**
+ * Structure used by FSReadDir to iterate the contents of a directory.
+ */
+struct FSDirEntry
 {
-   FSStat info;
+   //! File stat.
+   FSStat stat;
+
+   //! File name.
    char name[256];
 };
-CHECK_OFFSET(FSDirectoryEntry, 0x64, name);
-CHECK_SIZE(FSDirectoryEntry, 0x164);
-
-using FSAsyncCallback = wfunc_ptr<void, FSClient *, FSCmdBlock *, FSStatus, uint32_t>;
+CHECK_OFFSET(FSDirEntry, 0x00, stat);
+CHECK_OFFSET(FSDirEntry, 0x64, name);
+CHECK_SIZE(FSDirEntry, 0x164);
 
 #pragma pack(pop)
 
@@ -180,50 +252,40 @@ FSInit();
 void
 FSShutdown();
 
-void
-FSInitCmdBlock(FSCmdBlock *block);
+FSAsyncResult *
+FSGetAsyncResult(OSMessage *message);
 
-FSStatus
-FSSetCmdPriority(FSCmdBlock *block,
-                 FSPriority priority);
-
-FSPriority
-FSGetCmdPriority(FSCmdBlock *block);
-
-/** @} */
+uint32_t
+FSGetClientNum();
 
 namespace internal
 {
 
-void
-startFsThread();
-
-void
-shutdownFsThread();
-
-void
-handleFsDoneInterrupt();
-
-FSAsyncData *
-prepareSyncOp(FSClient *client,
-              FSCmdBlock *block);
-
-FSStatus
-resolveSyncOp(FSClient *client,
-              FSCmdBlock *block);
-
-void
-queueFsWork(FSClient *client,
-            FSCmdBlock *block,
-            FSAsyncData *asyncData,
-            std::function<FSStatus()> func);
+bool
+fsInitialised();
 
 bool
-cancelFsWork(FSCmdBlock *cmd);
+fsClientRegistered(FSClient *client);
 
-void
-cancelAllFsWork();
+bool
+fsClientRegistered(FSClientBody *clientBody);
+
+bool
+fsRegisterClient(FSClientBody *clientBody);
+
+bool
+fsDeregisterClient(FSClientBody *clientBody);
+
+FSStatus
+fsAsyncResultInit(FSClientBody *clientBody,
+                  FSAsyncResult *asyncResult,
+                  const FSAsyncData *asyncData);
+
+FSStatus
+fsDecodeFsaStatusToFsStatus(FSAStatus error);
 
 } // namespace internal
+
+/** @} */
 
 } // namespace coreinit

@@ -55,19 +55,19 @@ loadAppXML(const char *path,
            decaf::AppXML &app)
 {
    auto fs = getFileSystem();
-   auto fh = fs->openFile(path, fs::File::Read);
+   auto result = fs->openFile(path, fs::File::Read);
 
-   if (!fh) {
+   if (!result) {
       gLog->warn("Could not open {}, using default values", path);
       return false;
    }
 
    // Read whole file into buffer
+   auto fh = result.value();
    auto size = fh->size();
    auto buffer = std::vector<uint8_t>(size);
    fh->read(buffer.data(), size, 1);
    fh->close();
-   delete fh;
 
    // Parse app.xml
    pugi::xml_document doc;
@@ -96,19 +96,19 @@ loadCosXML(const char *path,
            decaf::CosXML &cos)
 {
    auto fs = getFileSystem();
-   auto fh = fs->openFile(path, fs::File::Read);
+   auto result = fs->openFile(path, fs::File::Read);
 
-   if (!fh) {
+   if (!result) {
       gLog->warn("Could not open {}, using default values", path);
       return false;
    }
 
    // Read whole file into buffer
+   auto fh = result.value();
    auto size = fh->size();
    auto buffer = std::vector<uint8_t>(size);
    fh->read(buffer.data(), size, 1);
    fh->close();
-   delete fh;
 
    // Parse app.xml
    pugi::xml_document doc;
@@ -135,6 +135,20 @@ loadCosXML(const char *path,
    cos.exception_stack0_size = xmlReadUnsigned(node.child("exception_stack0_size"));
    cos.exception_stack1_size = xmlReadUnsigned(node.child("exception_stack1_size"));
    cos.exception_stack2_size = xmlReadUnsigned(node.child("exception_stack2_size"));
+
+   for (auto child : node.child("permissions").children()) {
+      auto group = xmlReadUnsigned(child.child("group"));
+      auto mask = xmlReadUnsigned64(child.child("mask"));
+
+      switch (group) {
+      case decaf::CosXML::FS:
+         cos.permission_fs = mask;
+         break;
+      case decaf::CosXML::MCP:
+         cos.permission_mcp = mask;
+         break;
+      }
+   }
 
    return true;
 }
@@ -177,19 +191,19 @@ loadMetaXML(const char *path,
             decaf::MetaXML &meta)
 {
    auto fs = getFileSystem();
-   auto fh = fs->openFile(path, fs::File::Read);
+   auto result = fs->openFile(path, fs::File::Read);
 
-   if (!fh) {
+   if (!result) {
       gLog->warn("Could not open {}, using default values", path);
       return false;
    }
 
    // Read whole file into buffer
+   auto fh = result.value();
    auto size = fh->size();
    auto buffer = std::vector<uint8_t>(size);
    fh->read(buffer.data(), size, 1);
    fh->close();
-   delete fh;
 
    // Parse app.xml
    pugi::xml_document doc;
@@ -268,6 +282,8 @@ loadGameInfo(decaf::GameInfo &info)
       info.cos.exception_stack0_size = 0x1000u;
       info.cos.exception_stack1_size = 0x1000u;
       info.cos.exception_stack2_size = 0x1000u;
+      info.cos.permission_fs = decaf::CosXML::SdCardWrite;
+      info.cos.permission_mcp = decaf::CosXML::AddOnContent;
    }
 
    if (!loadMetaXML("/vol/meta/meta.xml", info.meta)) {

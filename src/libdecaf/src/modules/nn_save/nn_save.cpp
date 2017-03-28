@@ -15,8 +15,7 @@ void
 Module::RegisterFunctions()
 {
    registerCoreFunctions();
-   registerDirFunctions();
-   registerFileFunctions();
+   registerCmdFunctions();
 }
 
 } // namespace save
