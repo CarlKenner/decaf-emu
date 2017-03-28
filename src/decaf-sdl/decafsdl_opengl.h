@@ -5,12 +5,16 @@
 #include "libdecaf/decaf_opengl.h"
 #include <SDL.h>
 #include <glbinding/gl/gl.h>
+#include "..\LibOVR\Include\OVR_CAPI.h"
+#include "..\LibOVR\Include\OVR_CAPI_GL.h"
 
 class DecafSDLOpenGL : public DecafSDLGraphics
 {
 public:
    DecafSDLOpenGL();
    ~DecafSDLOpenGL() override;
+
+   void InitOculusTextures();
 
    bool
    initialise(int width,
@@ -57,6 +61,18 @@ protected:
    gl::GLuint mSampler;
    
    gl::GLfloat mBackgroundColour[3];
+public:
+  bool				hasHMD;
+  bool				hasOculusRift;
+
+  ovrSession			hmdSession;
+  ovrGraphicsLuid		ovrLuid;
+
+  ovrHmdDesc			hmdDesc;
+  ovrTextureSwapChain oculusSwapChain[2];
+  uint32_t				oculusFboId;
+  uint32_t				ocululsDepthTexID;
+  ovrSizei renderTarget;
 };
 
 #endif // DECAF_NOGL

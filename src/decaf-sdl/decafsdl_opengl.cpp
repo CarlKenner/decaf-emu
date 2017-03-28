@@ -7,6 +7,8 @@
 #include <string>
 #include <glbinding/Binding.h>
 #include <glbinding/Meta.h>
+#include "..\LibOVR\Include\OVR_CAPI.h"
+#include "..\LibOVR\Include\OVR_CAPI_GL.h"
 
 static std::string
 getGlDebugSource(gl::GLenum source)
@@ -106,9 +108,9 @@ DecafSDLOpenGL::DecafSDLOpenGL()
 {
     using decaf::config::ui::background_colour;
     
-    mBackgroundColour[0] = background_colour.r / 255.0;
-    mBackgroundColour[1] = background_colour.g / 255.0;
-    mBackgroundColour[2] = background_colour.b / 255.0;
+    mBackgroundColour[0] = background_colour.r / 255.0f;
+    mBackgroundColour[1] = background_colour.g / 255.0f;
+    mBackgroundColour[2] = background_colour.b / 255.0f;
 }
 
 DecafSDLOpenGL::~DecafSDLOpenGL()
@@ -122,6 +124,65 @@ DecafSDLOpenGL::~DecafSDLOpenGL()
       SDL_GL_DeleteContext(mThreadContext);
       mThreadContext = nullptr;
    }
+}
+
+void
+DecafSDLOpenGL::InitOculusTextures()
+{
+  renderTarget = ovr_GetFovTextureSize(hmdSession, (ovrEyeType)0, hmdDesc.DefaultEyeFov[0], 1.0f);
+  ovrTextureSwapChainDesc desc = {};
+    desc.Type = ovrTexture_2D;
+    desc.ArraySize = 1;
+    desc.Width = renderTarget.w;
+    desc.Height = renderTarget.h;
+    desc.MipLevels = 1;
+    desc.Format = OVR_FORMAT_R8G8B8A8_UNORM_SRGB;
+    desc.SampleCount = 1;
+    desc.StaticImage = ovrFalse;
+
+
+    // create the swap texture sets 
+    if (ovr_CreateTextureSwapChainGL(hmdSession, &desc, &oculusSwapChain[0]) != ovrSuccess ||
+      ovr_CreateTextureSwapChainGL(hmdSession, &desc, &oculusSwapChain[1]) != ovrSuccess)
+    {
+      //common->Warning("iVr::HMDInitializeDistortion unable to create OVR swap texture set.\n VR mode is DISABLED.\n");
+      //game->isVR = false;
+
+    }
+
+    unsigned int texId = 0;
+    int length = 0;
+
+    for (int j = 0; j < 2; j++)
+    {
+      ovr_GetTextureSwapChainLength(hmdSession, oculusSwapChain[j], &length);
+      for (int i = 0; i < length; ++i)
+      {
+        ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[j], 0, &texId);
+        //oculusSwapChainTexId[j] = texId;
+
+        gl::glBindTexture(gl::GL_TEXTURE_2D, texId);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
+      }
+    }
+
+    ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[0]);
+    ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[1]);
+
+    gl::glGenFramebuffers(1, &oculusFboId);
+    gl::glGenTextures(1, &ocululsDepthTexID);
+
+    gl::glBindTexture(gl::GL_TEXTURE_2D, ocululsDepthTexID);
+    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
+    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
+    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
+
+    gl::glTexImage2D(gl::GL_TEXTURE_2D, 0, gl::GL_DEPTH_COMPONENT24, renderTarget.w, renderTarget.h, 0, gl::GL_DEPTH_COMPONENT, gl::GL_UNSIGNED_INT, NULL);
+
 }
 
 void
@@ -272,9 +333,86 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
    gl::glClear(gl::GL_COLOR_BUFFER_BIT);
 
    // Draw displays
+   // DRC screen width = 13.683735932855423761961780246585 cm
+   // DRC screen height = 7.6971014622311758661035013887042 cm
    auto drawTV = tvViewport.width > 0 && tvViewport.height > 0;
    auto drawDRC = drcViewport.width > 0 && drcViewport.height > 0;
 
+   //gl::wglSwapIntervalEXT(0);
+
+   gl::GLuint curTexId;
+   int curIndex;
+
+   ovr_GetTextureSwapChainCurrentIndex(hmdSession, oculusSwapChain[0], &curIndex);
+   ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[0], curIndex, &curTexId);
+
+   gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, oculusFboId);
+   gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_COLOR_ATTACHMENT0, gl::GL_TEXTURE_2D, curTexId, 0);
+   gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_DEPTH_ATTACHMENT, gl::GL_TEXTURE_2D, ocululsDepthTexID, 0);
+
+   ovrRecti viewport;
+   viewport.Pos.x = 0;
+   viewport.Pos.y = 0;
+   viewport.Size = renderTarget;
+   gl::glViewport(0, 0, renderTarget.w, renderTarget.h);
+   gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+   if (drawTV)
+   {
+     drawScanBuffer(tvBuffer);
+   }
+   else if (drawDRC)
+   {
+     drawScanBuffer(drcBuffer);
+   }
+
+   ovr_GetTextureSwapChainCurrentIndex(hmdSession, oculusSwapChain[1], &curIndex);
+   ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[1], curIndex, &curTexId);
+
+   // Submit frame with one layer we have.
+
+   ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[0]);
+   ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[1]);
+
+
+   ovrLayerQuad lg, lg2;
+   lg.Header.Type = ovrLayerType_Quad;
+   lg.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+   lg.ColorTexture = oculusSwapChain[0];
+   lg.Viewport = viewport;
+   lg.QuadSize.x = 3.0f; // metres
+   lg.QuadSize.y = lg.QuadSize.x * 3.0f / 4.0f; // metres
+   lg.QuadPoseCenter.Position.x = 0; // metres
+   lg.QuadPoseCenter.Position.y = 0; // metres
+   lg.QuadPoseCenter.Position.z = -1.5f; // metres (negative means in front of us)
+   lg.QuadPoseCenter.Orientation.w = 1;
+   lg.QuadPoseCenter.Orientation.x = 0;
+   lg.QuadPoseCenter.Orientation.y = 0;
+   lg.QuadPoseCenter.Orientation.z = 0;
+
+   // draw another one behind us
+   lg2 = lg;
+   lg2.QuadPoseCenter.Orientation.w = 0;
+   lg2.QuadPoseCenter.Orientation.y = 1;
+   lg2.QuadPoseCenter.Position.z = -lg.QuadPoseCenter.Position.z;
+
+   ovrLayerHeader* LayerList[2];
+   LayerList[0] = &lg.Header;
+   LayerList[1] = &lg2.Header;
+   //common->Printf( "Frame Submitting 2D frame # %d\n", idLib::frameNumber );
+   ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 2);
+   if (result == ovrSuccess_NotVisible)
+   {
+   }
+   else if (result == ovrError_DisplayLost)
+   {
+     //common->Warning("Vr_GL.cpp HMDRender : Display Lost when submitting oculus layer.\n");
+   }
+   else if (OVR_FAILURE(result))
+   {
+     //common->Warning("Vr_GL.cpp HMDRender : Failed to submit oculus layer. (result %d) \n", result);
+   }
+
+   gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, 0);
    if (drawTV) {
       float viewportArray[] = {
          tvViewport.x, tvViewport.y,
@@ -368,6 +506,25 @@ DecafSDLOpenGL::initialise(int width, int height)
    initialiseDraw();
    decaf::debugger::initialiseUiGL();
 
+   ovrResult result = ovr_Initialize(nullptr);
+   ovr_IdentifyClient("EngineName: Decaf\n"
+     "EngineVersion: 0.0.1\n"
+     "EngineEditor: false");
+
+   result = ovr_Create(&hmdSession, &ovrLuid);
+
+   if (OVR_FAILURE(result))
+   {
+     //common->Printf("\nFailed to initialize Oculus Rift.\n");
+     ovr_Shutdown();
+     return false;
+   }
+   ovr_SetTrackingOriginType(hmdSession, ovrTrackingOrigin_EyeLevel);
+   ovr_RecenterTrackingOrigin(hmdSession);
+
+   hmdDesc = ovr_GetHmdDesc(hmdSession);
+   InitOculusTextures();
+
    // Start graphics thread
    if (!config::gpu::force_sync) {
       SDL_GL_SetSwapInterval(1);
@@ -403,6 +560,11 @@ DecafSDLOpenGL::shutdown()
       mDecafDriver->stop();
       mGraphicsThread.join();
    }
+   ovr_DestroyTextureSwapChain(hmdSession, oculusSwapChain[0]);
+   ovr_DestroyTextureSwapChain(hmdSession, oculusSwapChain[1]);
+
+   ovr_Destroy(hmdSession);
+   ovr_Shutdown();
 }
 
 void
