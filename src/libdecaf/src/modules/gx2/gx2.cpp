@@ -315,6 +315,8 @@ Module::RegisterFunctions()
    RegisterKernelFunction(GX2GetSurfaceMipPitch);
    RegisterKernelFunction(GX2GetSurfaceMipSliceSize);
    RegisterKernelFunction(GX2CopySurface);
+   RegisterKernelFunction(GX2ConvertDepthBufferToTextureSurface);
+   RegisterKernelFunction(GX2ResolveAAColorBuffer);
    RegisterKernelFunction(GX2ExpandDepthBuffer);
 
    // Swap

@@ -535,6 +535,331 @@ GX2CopySurface(GX2Surface *src,
    });
 }
 
+// Carl: This copies, or converts in place, the depth buffer "depthBuffer" to the texture or ColorBuffer "dst".
+void
+GX2ConvertDepthBufferToTextureSurface(GX2DepthBuffer *depthBuffer,
+  GX2Surface *dst,
+  uint32_t dstLevel,
+  uint32_t dstSlice)
+{
+  GX2Surface *src = &depthBuffer->surface;
+  uint32_t srcLevel = depthBuffer->viewMip; // Carl: only copy this single mip level from depth buffer to dstLevel on dst
+  uint32_t srcSlice = depthBuffer->viewFirstSlice; // Carl: We're actually supposed to copy depthBuffer->viewNumSlices slices starting from this slice,
+                                                   // to slices starting from dstSlice on dst.
+
+  // Carl: MSAA samples must be the same
+  if (src->aa != dst->aa)
+    return;
+
+  // Carl: Check if we're converting in place.
+  if (src->image == dst->image)
+  {
+    // Carl: tile modes must be the same
+    if (src->tileMode != dst->tileMode)
+      return;
+    // Carl: but use must be different (TODO: check if this is actually enforced on hardware)
+    if (src->use != GX2SurfaceUse::DepthBuffer)
+      return;
+    if (dst->use & GX2SurfaceUse::DepthBuffer)
+      return;
+    if ((dst->use & GX2SurfaceUse::ColorBuffer)==0 && (dst->use & GX2SurfaceUse::Texture)==0)
+      return;
+    // Carl: do we actually need to do anything to convert it in place? Can copySurface handle that?
+    // let's just return for now without doing anything
+    return;
+  }
+
+  // Carl: For now, I'm just using the exact same code as GX2CopySurface.
+  if (src->format == GX2SurfaceFormat::INVALID || src->width == 0 || src->height == 0) {
+    return;
+  }
+
+  if (dst->format == GX2SurfaceFormat::INVALID) {
+    return;
+  }
+
+  if (src->tileMode == GX2TileMode::LinearSpecial ||
+    dst->tileMode == GX2TileMode::LinearSpecial)
+  {
+    // LinearSpecial surfaces cause the copy to occur on the CPU.  This code
+    //  assumes that if the texture was previously written by the GPU, that it
+    //  has since been invalidated into CPU memory.
+    gx2::internal::copySurface(src, srcLevel, srcSlice,
+      dst, dstLevel, dstSlice);
+    return;
+  }
+
+  auto dstDim = static_cast<latte::SQ_TEX_DIM>(dst->dim.value());
+  auto dstFormat = static_cast<latte::SQ_DATA_FORMAT>(dst->format & 0x3f);
+  auto dstTileMode = static_cast<latte::SQ_TILE_MODE>(dst->tileMode.value());
+  auto dstFormatComp = latte::SQ_FORMAT_COMP::UNSIGNED;
+  auto dstNumFormat = latte::SQ_NUM_FORMAT::NORM;
+  auto dstForceDegamma = false;
+  auto dstPitch = dst->pitch;
+  auto dstDepth = dst->depth;
+  auto dstSamples = 0u;
+
+  if (dst->format & GX2AttribFormatFlags::SIGNED) {
+    dstFormatComp = latte::SQ_FORMAT_COMP::SIGNED;
+  }
+
+  if (dst->format & GX2AttribFormatFlags::SCALED) {
+    dstNumFormat = latte::SQ_NUM_FORMAT::SCALED;
+  }
+  else if (dst->format & GX2AttribFormatFlags::INTEGER) {
+    dstNumFormat = latte::SQ_NUM_FORMAT::INT;
+  }
+
+  if (dst->format & GX2AttribFormatFlags::DEGAMMA) {
+    dstForceDegamma = true;
+  }
+
+  if (dstFormat >= latte::SQ_DATA_FORMAT::FMT_BC1 && dstFormat <= latte::SQ_DATA_FORMAT::FMT_BC5) {
+    dstPitch *= 4;
+  }
+
+  if (dstDim == latte::SQ_TEX_DIM::DIM_CUBEMAP) {
+    dstDepth /= 6;
+  }
+
+  if (dst->aa == GX2AAMode::Mode2X) {
+    dstSamples = 2;
+  }
+  else if (dst->aa == GX2AAMode::Mode4X) {
+    dstSamples = 4;
+  }
+  else if (dst->aa == GX2AAMode::Mode8X) {
+    dstSamples = 8;
+  }
+
+  auto srcDim = static_cast<latte::SQ_TEX_DIM>(src->dim.value());
+  auto srcFormat = static_cast<latte::SQ_DATA_FORMAT>(src->format & 0x3f);
+  auto srcTileMode = static_cast<latte::SQ_TILE_MODE>(src->tileMode.value());
+  auto srcFormatComp = latte::SQ_FORMAT_COMP::UNSIGNED;
+  auto srcNumFormat = latte::SQ_NUM_FORMAT::NORM;
+  auto srcForceDegamma = false;
+  auto srcPitch = src->pitch;
+  auto srcDepth = src->depth;
+  auto srcSamples = 0u;
+
+  if (src->format & GX2AttribFormatFlags::SIGNED) {
+    srcFormatComp = latte::SQ_FORMAT_COMP::SIGNED;
+  }
+
+  if (src->format & GX2AttribFormatFlags::SCALED) {
+    srcNumFormat = latte::SQ_NUM_FORMAT::SCALED;
+  }
+  else if (src->format & GX2AttribFormatFlags::INTEGER) {
+    srcNumFormat = latte::SQ_NUM_FORMAT::INT;
+  }
+
+  if (src->format & GX2AttribFormatFlags::DEGAMMA) {
+    srcForceDegamma = true;
+  }
+
+  if (srcFormat >= latte::SQ_DATA_FORMAT::FMT_BC1 && srcFormat <= latte::SQ_DATA_FORMAT::FMT_BC5) {
+    srcPitch *= 4;
+  }
+
+  if (srcDim == latte::SQ_TEX_DIM::DIM_CUBEMAP) {
+    srcDepth /= 6;
+  }
+
+  if (src->aa == GX2AAMode::Mode2X) {
+    srcSamples = 2;
+  }
+  else if (src->aa == GX2AAMode::Mode4X) {
+    srcSamples = 4;
+  }
+  else if (src->aa == GX2AAMode::Mode8X) {
+    srcSamples = 8;
+  }
+
+  pm4::write(pm4::DecafCopySurface{
+    dst->image.getAddress(),
+    dst->mipmaps.getAddress(),
+    dstLevel,
+    dstSlice,
+    dstPitch,
+    dst->width,
+    dst->height,
+    dstDepth,
+    dstSamples,
+    dstDim,
+    dstFormat,
+    dstNumFormat,
+    dstFormatComp,
+    dstForceDegamma ? 1u : 0u,
+    dstTileMode,
+    src->image.getAddress(),
+    src->mipmaps.getAddress(),
+    srcLevel,
+    srcSlice,
+    srcPitch,
+    src->width,
+    src->height,
+    srcDepth,
+    srcSamples,
+    srcDim,
+    srcFormat,
+    srcNumFormat,
+    srcFormatComp,
+    srcForceDegamma ? 1u : 0u,
+    srcTileMode
+  });
+}
+
+// Carl: This copies (with MSAA resolve) the multi-sample colorBuffer to the single-sample dst.
+void
+GX2ResolveAAColorBuffer(GX2ColorBuffer *colorBuffer,
+  GX2Surface *dst,
+  uint32_t dstLevel,
+  uint32_t dstSlice)
+{
+  GX2Surface *src = &colorBuffer->surface;
+  uint32_t srcLevel = colorBuffer->viewMip; // Carl: only copy this single mip level from depth buffer to dstLevel on dst
+  uint32_t srcSlice = colorBuffer->viewFirstSlice; // Carl: We're actually supposed to resolve colorBuffer->viewNumSlices slices starting from this slice,
+                                                   // to slices starting from dstSlice on dst.
+
+  // Carl: For now, I'm just using almost the same code as GX2CopySurface. Hopefully it supports resolve.
+  if (src->format == GX2SurfaceFormat::INVALID || src->width == 0 || src->height == 0) {
+    return;
+  }
+
+  if (dst->format == GX2SurfaceFormat::INVALID) {
+    return;
+  }
+
+  if (src->tileMode == GX2TileMode::LinearSpecial ||
+    dst->tileMode == GX2TileMode::LinearSpecial)
+  {
+    // CPU copies are not supported and produce undefined behaviour.
+    return;
+  }
+
+  auto dstDim = static_cast<latte::SQ_TEX_DIM>(dst->dim.value());
+  auto dstFormat = static_cast<latte::SQ_DATA_FORMAT>(dst->format & 0x3f);
+  auto dstTileMode = static_cast<latte::SQ_TILE_MODE>(dst->tileMode.value());
+  auto dstFormatComp = latte::SQ_FORMAT_COMP::UNSIGNED;
+  auto dstNumFormat = latte::SQ_NUM_FORMAT::NORM;
+  auto dstForceDegamma = false;
+  auto dstPitch = dst->pitch;
+  auto dstDepth = dst->depth;
+  auto dstSamples = 0u;
+
+  if (dst->format & GX2AttribFormatFlags::SIGNED) {
+    dstFormatComp = latte::SQ_FORMAT_COMP::SIGNED;
+  }
+
+  if (dst->format & GX2AttribFormatFlags::SCALED) {
+    dstNumFormat = latte::SQ_NUM_FORMAT::SCALED;
+  }
+  else if (dst->format & GX2AttribFormatFlags::INTEGER) {
+    dstNumFormat = latte::SQ_NUM_FORMAT::INT;
+  }
+
+  if (dst->format & GX2AttribFormatFlags::DEGAMMA) {
+    dstForceDegamma = true;
+  }
+
+  if (dstFormat >= latte::SQ_DATA_FORMAT::FMT_BC1 && dstFormat <= latte::SQ_DATA_FORMAT::FMT_BC5) {
+    dstPitch *= 4;
+  }
+
+  if (dstDim == latte::SQ_TEX_DIM::DIM_CUBEMAP) {
+    dstDepth /= 6;
+  }
+
+  if (dst->aa == GX2AAMode::Mode2X) {
+    // error
+    return;
+  }
+  else if (dst->aa == GX2AAMode::Mode4X) {
+    // error
+    return;
+  }
+  else if (dst->aa == GX2AAMode::Mode8X) {
+    // error
+    return;
+  }
+
+  auto srcDim = static_cast<latte::SQ_TEX_DIM>(src->dim.value());
+  auto srcFormat = static_cast<latte::SQ_DATA_FORMAT>(src->format & 0x3f);
+  auto srcTileMode = static_cast<latte::SQ_TILE_MODE>(src->tileMode.value());
+  auto srcFormatComp = latte::SQ_FORMAT_COMP::UNSIGNED;
+  auto srcNumFormat = latte::SQ_NUM_FORMAT::NORM;
+  auto srcForceDegamma = false;
+  auto srcPitch = src->pitch;
+  auto srcDepth = src->depth;
+  auto srcSamples = 0u;
+
+  if (src->format & GX2AttribFormatFlags::SIGNED) {
+    srcFormatComp = latte::SQ_FORMAT_COMP::SIGNED;
+  }
+
+  if (src->format & GX2AttribFormatFlags::SCALED) {
+    srcNumFormat = latte::SQ_NUM_FORMAT::SCALED;
+  }
+  else if (src->format & GX2AttribFormatFlags::INTEGER) {
+    srcNumFormat = latte::SQ_NUM_FORMAT::INT;
+  }
+
+  if (src->format & GX2AttribFormatFlags::DEGAMMA) {
+    srcForceDegamma = true;
+  }
+
+  if (srcFormat >= latte::SQ_DATA_FORMAT::FMT_BC1 && srcFormat <= latte::SQ_DATA_FORMAT::FMT_BC5) {
+    srcPitch *= 4;
+  }
+
+  if (srcDim == latte::SQ_TEX_DIM::DIM_CUBEMAP) {
+    srcDepth /= 6;
+  }
+
+  if (src->aa == GX2AAMode::Mode2X) {
+    srcSamples = 2;
+  }
+  else if (src->aa == GX2AAMode::Mode4X) {
+    srcSamples = 4;
+  }
+  else if (src->aa == GX2AAMode::Mode8X) {
+    srcSamples = 8;
+  }
+
+  pm4::write(pm4::DecafCopySurface{
+    dst->image.getAddress(),
+    dst->mipmaps.getAddress(),
+    dstLevel,
+    dstSlice,
+    dstPitch,
+    dst->width,
+    dst->height,
+    dstDepth,
+    dstSamples,
+    dstDim,
+    dstFormat,
+    dstNumFormat,
+    dstFormatComp,
+    dstForceDegamma ? 1u : 0u,
+    dstTileMode,
+    src->image.getAddress(),
+    src->mipmaps.getAddress(),
+    srcLevel,
+    srcSlice,
+    srcPitch,
+    src->width,
+    src->height,
+    srcDepth,
+    srcSamples,
+    srcDim,
+    srcFormat,
+    srcNumFormat,
+    srcFormatComp,
+    srcForceDegamma ? 1u : 0u,
+    srcTileMode
+  });
+}
+
 void
 GX2ExpandDepthBuffer(GX2DepthBuffer *buffer)
 {

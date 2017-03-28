@@ -192,6 +192,18 @@ GX2CopySurface(GX2Surface *src,
                uint32_t dstSlice);
 
 void
+GX2ConvertDepthBufferToTextureSurface(GX2DepthBuffer *depthBuffer,
+                                      GX2Surface *dst,
+                                      uint32_t dstLevel,
+                                      uint32_t dstSlice);
+
+void
 GX2ExpandDepthBuffer(GX2DepthBuffer *buffer);
+
+void
+GX2ResolveAAColorBuffer(GX2ColorBuffer *colorBuffer,
+                        GX2Surface *dst,
+                        uint32_t dstLevel,
+                        uint32_t dstSlice);
 
 } // namespace gx2
