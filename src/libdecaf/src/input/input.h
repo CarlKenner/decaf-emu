@@ -12,6 +12,9 @@ typedef decaf::input::ButtonStatus ButtonStatus;
 vpad::Type
 getControllerType(vpad::Channel channel);
 
+void
+startRead(vpad::Channel channel);
+
 ButtonStatus
 getButtonStatus(vpad::Channel channel,
                 vpad::Core button);

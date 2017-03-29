@@ -2,6 +2,71 @@
 #include <common/decaf_assert.h>
 #include "config.h"
 #include "decafsdl.h"
+#include "vr.h"
+
+float
+getTouchAxis(vpad::CoreAxis axis)
+{
+  switch (axis) {
+  case vpad::CoreAxis::LeftStickX:
+    return vri.Thumbstick[0].x;
+  case vpad::CoreAxis::LeftStickY:
+    return vri.Thumbstick[0].y;
+  case vpad::CoreAxis::RightStickX:
+    return vri.Thumbstick[1].x;
+  case vpad::CoreAxis::RightStickY:
+    return vri.Thumbstick[1].y;
+  }
+  return 0;
+}
+
+
+unsigned int
+getTouchButton(vpad::Core button)
+{
+  switch (button) {
+  case vpad::Core::Up:
+    return false;
+  case vpad::Core::Down:
+    return false;
+  case vpad::Core::Left:
+    return false;
+  case vpad::Core::Right:
+    return false;
+  case vpad::Core::A:
+    return vri.Buttons & ovrButton_A;
+  case vpad::Core::B:
+    return (vri.Buttons & ovrButton_X) && !(vri.Touches & ovrTouch_LThumbRest); // press left Touch's X button without touching thumb rest
+  case vpad::Core::X:
+    return vri.Buttons & ovrButton_B;
+  case vpad::Core::Y:
+    return vri.Buttons & ovrButton_Y;
+  case vpad::Core::TriggerR:
+    return vri.IndexTrigger[1] > 0.25f;
+  case vpad::Core::TriggerL:
+    return vri.IndexTrigger[0] > 0.25f;
+  case vpad::Core::TriggerZR:
+    return vri.HandTrigger[1] > 0.25f;
+  case vpad::Core::TriggerZL:
+    return vri.HandTrigger[0] > 0.25f;
+  case vpad::Core::LeftStick:
+    return vri.Buttons & ovrButton_LThumb;
+  case vpad::Core::RightStick:
+    return vri.Buttons & ovrButton_RThumb;
+  case vpad::Core::Plus:
+    return vri.Buttons & ovrButton_Enter; // Menu button on Left Touch
+  case vpad::Core::Minus:
+    return (vri.Touches & ovrTouch_LThumbRest) && (vri.Buttons & ovrButton_X); // - = Thumbrest + X
+  case vpad::Core::Home:
+    return (vri.Touches & ovrTouch_LThumbRest) && (vri.Buttons & ovrButton_Y); // Home = Thumbrest + Y
+  case vpad::Core::Sync:
+    return false;
+  }
+
+  return false;
+}
+
+
 
 static int
 getKeyboardButtonMapping(const config::input::InputDevice *device,
@@ -373,6 +438,12 @@ DecafSDL::getControllerType(vpad::Channel channel)
    return vpad::Type::DRC;
 }
 
+void
+DecafSDL::startRead(vpad::Channel channel)
+{
+  ovr_GetInputState(hmdSession, ovrControllerType_Touch, &vri);
+}
+
 ButtonStatus
 DecafSDL::getButtonStatus(vpad::Channel channel, vpad::Core button)
 {
@@ -393,6 +464,8 @@ DecafSDL::getButtonStatus(vpad::Channel channel, vpad::Core button)
       if (scancode >= 0 && scancode < numKeys && state[scancode]) {
          return ButtonStatus::ButtonPressed;
       }
+      if (getTouchButton(button))
+        return ButtonStatus::ButtonPressed;
 
       break;
    }
@@ -403,6 +476,8 @@ DecafSDL::getButtonStatus(vpad::Channel channel, vpad::Core button)
             return ButtonStatus::ButtonPressed;
          }
       }
+      if (getTouchButton(button))
+        return ButtonStatus::ButtonPressed;
       break;
    }
 
@@ -435,7 +510,7 @@ DecafSDL::getAxisValue(vpad::Channel channel, vpad::CoreAxis axis)
       if (scancodePlus >= 0 && scancodePlus < numKeys && state[scancodePlus]) {
          result += 1.0f;
       }
-
+      result += getTouchAxis(axis);
       return result;
    }
 
@@ -444,16 +519,17 @@ DecafSDL::getAxisValue(vpad::Channel channel, vpad::CoreAxis axis)
          auto value = getJoystickAxisState(mVpad0Config, mVpad0Controller, channel, axis);
 
          if (value < 0) {
-            return value / 32768.0f;
+            return value / 32768.0f + getTouchAxis(axis);
          } else {
-            return value / 32767.0f;
+            return value / 32767.0f + getTouchAxis(axis);
          }
       }
+      return getTouchAxis(axis);
 
       break;
    }
 
-   return 0.0f;
+   return getTouchAxis(axis);
 }
 
 bool

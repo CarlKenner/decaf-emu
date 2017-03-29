@@ -12,6 +12,11 @@ NullInputDriver::getControllerType(vpad::Channel channel)
    return vpad::Type::Disconnected;
 }
 
+void
+NullInputDriver::startRead(vpad::Channel channel)
+{
+}
+
 ButtonStatus
 NullInputDriver::getButtonStatus(vpad::Channel channel, vpad::Core button)
 {

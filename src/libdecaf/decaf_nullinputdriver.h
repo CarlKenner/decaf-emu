@@ -11,6 +11,9 @@ public:
    virtual input::vpad::Type
    getControllerType(input::vpad::Channel channel) override;
 
+   virtual void
+   startRead(input::vpad::Channel channel) override;
+
    virtual input::ButtonStatus
    getButtonStatus(input::vpad::Channel channel, input::vpad::Core button) override;
 

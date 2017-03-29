@@ -60,6 +60,8 @@ VPADRead(uint32_t chan,
    auto channel = static_cast<input::vpad::Channel>(chan);
    auto &buffer = buffers[0];
 
+   input::startRead(channel);
+
    // Update button state
    for (auto &pair : gButtonMap) {
       auto bit = pair.first;

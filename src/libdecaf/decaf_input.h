@@ -246,6 +246,9 @@ public:
    virtual input::vpad::Type
    getControllerType(input::vpad::Channel channel) = 0;
 
+   virtual void
+   startRead(input::vpad::Channel channel) = 0;
+   
    virtual input::ButtonStatus
    getButtonStatus(input::vpad::Channel channel, input::vpad::Core button) = 0;
 

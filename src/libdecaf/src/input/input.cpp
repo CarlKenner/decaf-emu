@@ -10,6 +10,12 @@ getControllerType(vpad::Channel channel)
    return decaf::getInputDriver()->getControllerType(channel);
 }
 
+void
+startRead(vpad::Channel channel)
+{
+  decaf::getInputDriver()->startRead(channel);
+}
+
 ButtonStatus
 getButtonStatus(vpad::Channel channel,
                 vpad::Core button)
