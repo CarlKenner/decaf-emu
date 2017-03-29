@@ -441,7 +441,12 @@ DecafSDL::getControllerType(vpad::Channel channel)
 void
 DecafSDL::startRead(vpad::Channel channel)
 {
-  ovr_GetInputState(hmdSession, ovrControllerType_Touch, &vri);
+  ovrSessionStatus ss;
+  ovr_GetSessionStatus(hmdSession, &ss);
+  if (ss.IsVisible)
+      ovr_GetInputState(hmdSession, ovrControllerType_Touch, &vri);
+  else
+      memset(&ss, 0, sizeof(ss));
 }
 
 ButtonStatus
