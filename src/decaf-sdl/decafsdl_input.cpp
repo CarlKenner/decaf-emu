@@ -540,6 +540,20 @@ DecafSDL::getAxisValue(vpad::Channel channel, vpad::CoreAxis axis)
 bool
 DecafSDL::getTouchPosition(vpad::Channel channel, vpad::TouchPosition &position)
 {
+   if (vrTouching)
+   {
+     position.x = vrTouchPoint.x;
+     if (position.x < 0)
+       position.x = 0;
+     else if (position.x > 1)
+       position.x = 1;
+     position.y = vrTouchPoint.y;
+     if (position.y < 0)
+       position.y = 0;
+     else if (position.y > 1)
+       position.y = 1;
+     return true;
+   }
    int mouseX, mouseY;
    auto mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
 

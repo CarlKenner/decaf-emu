@@ -317,7 +317,7 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      drawScanBuffer(drcBuffer);
      vrDRC.Commit();
 
-     ovrLayerQuad ltv, ltv2, ldrc;
+     ovrLayerQuad ltv, ltv2, ldrc, lfinger, ltouch;
      ltv.Header.Type = ovrLayerType_Quad;
      ltv.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
      ltv.ColorTexture = vrTV.TextureChain;
@@ -368,22 +368,82 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      p.Rotation *= r;
      ldrc.QuadPoseCenter = p;
 
-     ovrLayerHeader* LayerList[3];
+     // finger is attatched to right hand
+     if (t.Touches & ovrTouch_RIndexPointing)
+       lfinger.Header.Type = ovrLayerType_Quad;
+     else
+       lfinger.Header.Type = ovrLayerType_Disabled;
+     lfinger.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+     lfinger.ColorTexture = vrDRC.TextureChain;
+     lfinger.Viewport = vrDRC.viewport;
+     lfinger.Viewport.Size.w = 16; // use left 16 pixels of screen as finger image
+     lfinger.QuadSize.x = 0.01f; // metres
+     lfinger.QuadSize.y = 0.09f; // metres
+     if (s.HandStatusFlags[1] & ovrStatus_PositionTracked | ovrStatus_OrientationTracked)
+     {
+       p = s.HandPoses[1].ThePose;
+       OVR::Vector3f o = { 0, -0.01f, -0.02f };
+       p.Translation += p.Rotate(o);
+     }
+     else
+     {
+       lfinger.Header.Type = ovrLayerType_Disabled;
+     }
+     v = { -100 * MATH_FLOAT_DEGREETORADFACTOR, 0, 0 };
+     r = OVR::Quatf::FromRotationVector(v);
+     p.Rotation *= r;
+     lfinger.QuadPoseCenter = p;
+     OVR::Vector3f tip = { 0, lfinger.QuadSize.y / 2, 0 };
+     tip = p.Translation + p.Rotate(tip);
+     r = ldrc.QuadPoseCenter.Orientation;
+     OVR::Vector3f touchpoint = r.InverseRotate(tip - ldrc.QuadPoseCenter.Position);
+     vrTouchPoint.x = (touchpoint.x / ldrc.QuadSize.x) + 0.5f;
+     vrTouchPoint.y = 0.5f - (touchpoint.y / ldrc.QuadSize.y);
+     vrTouchPoint.z = touchpoint.z;
+     vrTouching = (touchpoint.z < 0 && touchpoint.z > -0.05f) && (vrTouchPoint.x > -0.1f && vrTouchPoint.x < 1.1f) && (vrTouchPoint.y > -0.1f && vrTouchPoint.y < 1.1f);
+
+#if 0
+     ltouch.Header.Type = ovrLayerType_Quad;
+     ltouch.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+     ltouch.ColorTexture = vrDRC.TextureChain;
+     ltouch.Viewport = vrDRC.viewport;
+     ltouch.QuadSize.x = 0.02f; // metres
+     ltouch.QuadSize.y = 0.02f; // metres
+     v = { -90 * MATH_FLOAT_DEGREETORADFACTOR, 0, 0 };
+     r = OVR::Quatf::FromRotationVector(v);
+     if (s.HandStatusFlags[1] & ovrStatus_PositionTracked | ovrStatus_OrientationTracked)
+     {
+       p = s.HandPoses[0].ThePose;
+       OVR::Vector3f o = { ldrc.QuadSize.x / 2 + 0.035916f, 0, 0.055f };
+       p.Translation += p.Rotate(o);
+     }
+     else
+     {
+       ltouch.Header.Type = ovrLayerType_Disabled;
+     }
+     p.Rotation *= r;
+     r = p.Rotation;
+     p.Translation += r.Rotate(touchpoint);
+     ltouch.QuadPoseCenter = p;
+     if (!vrTouching)
+       ltouch.Header.Type = ovrLayerType_Disabled;
+#endif
+
+     ovrLayerHeader* LayerList[5];
      LayerList[0] = &ltv.Header;
      LayerList[1] = &ltv2.Header;
      LayerList[2] = &ldrc.Header;
-     //common->Printf( "Frame Submitting 2D frame # %d\n", idLib::frameNumber );
-     ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 3);
+     LayerList[3] = &lfinger.Header;
+     //LayerList[4] = &ltouch.Header;
+     ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 4);
      if (result == ovrSuccess_NotVisible)
      {
      }
      else if (result == ovrError_DisplayLost)
      {
-       //common->Warning("Vr_GL.cpp HMDRender : Display Lost when submitting oculus layer.\n");
      }
      else if (OVR_FAILURE(result))
      {
-       //common->Warning("Vr_GL.cpp HMDRender : Failed to submit oculus layer. (result %d) \n", result);
      }
    }
 

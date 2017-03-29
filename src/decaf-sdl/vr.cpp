@@ -2,6 +2,7 @@
 
 bool				hasHMD;
 bool				hasOculusRift;
+bool				vrTouching;
 
 ovrSession			hmdSession;
 ovrGraphicsLuid		ovrLuid;
@@ -13,3 +14,4 @@ uint32_t				ocululsDepthTexID;
 ovrSizei renderTarget;
 
 ovrInputState vri;
+ovrVector3f vrTouchPoint;

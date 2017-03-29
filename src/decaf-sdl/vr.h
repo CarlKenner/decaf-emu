@@ -16,4 +16,5 @@ extern uint32_t				ocululsDepthTexID;
 extern ovrSizei renderTarget;
 
 extern ovrInputState vri;
-
+extern bool vrTouching;
+extern ovrVector3f vrTouchPoint;
