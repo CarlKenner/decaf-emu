@@ -7,8 +7,195 @@
 #include <string>
 #include <glbinding/Binding.h>
 #include <glbinding/Meta.h>
-#include "..\LibOVR\Include\OVR_CAPI.h"
-#include "..\LibOVR\Include\OVR_CAPI_GL.h"
+#include "OVR_CAPI.h"
+#include "OVR_CAPI_GL.h"
+#include "extras/OVR_Math.h"
+
+struct TextureBuffer
+{
+#if OVR_PRODUCT_VERSION >= 1
+#define ovrHmd ovrSession
+  ovrTextureSwapChain TextureChain;
+#else
+  ovrSwapTextureSet* TextureSet;
+#endif
+  gl::GLuint texId;
+  gl::GLuint fboId;
+  ovrSizei texSize;
+  ovrRecti viewport;
+  ovrHmd hmdSession;
+
+  TextureBuffer()
+  {
+  }
+
+  TextureBuffer(ovrHmd hmd, bool rendertarget, bool displayableOnHmd, int width, int height,
+    int mipLevels, unsigned char* data)
+  {
+#if OVR_PRODUCT_VERSION >= 1
+    TextureChain = nullptr;
+    texId = 0;
+    fboId = 0;
+#endif
+    hmdSession = hmd;
+    texSize.w = width;
+    texSize.h = height;
+    viewport.Pos.x = 0;
+    viewport.Pos.y = 0;
+    viewport.Size = texSize;
+
+    if (displayableOnHmd)
+    {
+      int swapChainLength = 0;
+#if OVR_PRODUCT_VERSION >= 1
+      ovrResult res;
+      ovrTextureSwapChainDesc desc = {};
+      desc.Type = ovrTexture_2D;
+      desc.ArraySize = 1;
+      desc.Width = width;
+      desc.Height = height;
+      desc.MipLevels = 1;
+      desc.Format = OVR_FORMAT_R8G8B8A8_UNORM_SRGB;
+      desc.SampleCount = 1;
+      desc.MiscFlags = 0;
+      desc.BindFlags = 0;
+      desc.StaticImage = ovrFalse;
+
+      res = ovr_CreateTextureSwapChainGL(hmd, &desc, &TextureChain);
+      ovr_GetTextureSwapChainLength(hmd, TextureChain, &swapChainLength);
+      if (!OVR_SUCCESS(res))
+      {
+        ovrErrorInfo e;
+        ovr_GetLastErrorInfo(&e);
+        //PanicAlert("ovr_CreateTextureSwapChainGL(hmd, OVR_FORMAT_R8G8B8A8_UNORM_SRGB, %d, %d)=%d "
+        //  "failed\n%s",
+        //  size.w, size.h, res, e.ErrorString);
+        return;
+      }
+#elif OVR_MAJOR_VERSION >= 7
+      ovr_CreateSwapTextureSetGL(hmd, gl::GL_SRGB8_ALPHA8, size.w, size.h, &TextureSet);
+      swapChainLength = TextureSet->TextureCount;
+#else
+      ovrHmd_CreateSwapTextureSetGL(hmd, gl::GL_RGBA, size.w, size.h, &TextureSet);
+      swapChainLength = TextureSet->TextureCount;
+#endif
+      for (int i = 0; i < swapChainLength; ++i)
+      {
+#if OVR_PRODUCT_VERSION >= 1
+        gl::GLuint chainTexId;
+        ovr_GetTextureSwapChainBufferGL(hmd, TextureChain, i, &chainTexId);
+        gl::glBindTexture(gl::GL_TEXTURE_2D, chainTexId);
+#else
+        ovrGLTexture* tex = (ovrGLTexture*)&TextureSet->Textures[i];
+        gl::glBindTexture(gl::GL_TEXTURE_2D, tex->OGL.TexId);
+#endif
+
+        if (rendertarget)
+        {
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
+        }
+        else
+        {
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR_MIPMAP_LINEAR);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_REPEAT);
+          gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_REPEAT);
+        }
+      }
+    }
+    else
+    {
+      gl::glGenTextures(1, &texId);
+      gl::glBindTexture(gl::GL_TEXTURE_2D, texId);
+
+      if (rendertarget)
+     {
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
+        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
+      }
+      else
+      {
+        glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
+        glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_REPEAT);
+        glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_REPEAT);
+      }
+
+#if OVR_PRODUCT_VERSION >= 1
+      gl::glTexImage2D(gl::GL_TEXTURE_2D, 0, gl::GL_SRGB8_ALPHA8, texSize.w, texSize.h, 0, gl::GL_RGBA,
+        gl::GL_UNSIGNED_BYTE, data);
+#else
+      gl::glTexImage2D(gl::GL_TEXTURE_2D, 0, gl::GL_RGBA, texSize.w, texSize.h, 0, gl::GL_RGBA, gl::GL_UNSIGNED_BYTE,
+        data);
+#endif
+    }
+
+    if (mipLevels > 1)
+    {
+      gl::glGenerateMipmap(gl::GL_TEXTURE_2D);
+    }
+
+    gl::glGenFramebuffers(1, &fboId);
+  }
+
+  ovrSizei GetSize(void) const { return texSize; }
+  void SetAndClearRenderSurface()
+  {
+#if OVR_PRODUCT_VERSION >= 1
+    gl::GLuint curTexId;
+    if (TextureChain)
+    {
+      int curIndex;
+      ovr_GetTextureSwapChainCurrentIndex(hmdSession, TextureChain, &curIndex);
+      ovr_GetTextureSwapChainBufferGL(hmdSession, TextureChain, curIndex, &curTexId);
+    }
+    else
+    {
+      curTexId = texId;
+    }
+
+    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, fboId);
+    gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_COLOR_ATTACHMENT0, gl::GL_TEXTURE_2D, curTexId, 0);
+
+    gl::glViewport(viewport.Pos.x, viewport.Pos.y, viewport.Size.w, viewport.Size.h);
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // glEnable(GL_FRAMEBUFFER_SRGB);
+#else
+    ovrGLTexture* tex = (ovrGLTexture*)&TextureSet->Textures[TextureSet->CurrentIndex];
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex->OGL.TexId, 0);
+
+    glViewport(0, 0, texSize.w, texSize.h);
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif
+  }
+
+  void UnsetRenderSurface()
+  {
+    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, fboId);
+    gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_COLOR_ATTACHMENT0, gl::GL_TEXTURE_2D, 0, 0);
+    gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_DEPTH_ATTACHMENT, gl::GL_TEXTURE_2D, 0, 0);
+  }
+
+  void Commit()
+  {
+#if OVR_PRODUCT_VERSION >= 1
+    if (TextureChain)
+    {
+      ovr_CommitTextureSwapChain(hmdSession, TextureChain);
+    }
+#endif
+  }
+};
+
+
+TextureBuffer vrWorldEye[2], vrTV, vrDRC;
 
 static std::string
 getGlDebugSource(gl::GLenum source)
@@ -129,60 +316,16 @@ DecafSDLOpenGL::~DecafSDLOpenGL()
 void
 DecafSDLOpenGL::InitOculusTextures()
 {
-  renderTarget = ovr_GetFovTextureSize(hmdSession, (ovrEyeType)0, hmdDesc.DefaultEyeFov[0], 1.0f);
-  ovrTextureSwapChainDesc desc = {};
-    desc.Type = ovrTexture_2D;
-    desc.ArraySize = 1;
-    desc.Width = renderTarget.w;
-    desc.Height = renderTarget.h;
-    desc.MipLevels = 1;
-    desc.Format = OVR_FORMAT_R8G8B8A8_UNORM_SRGB;
-    desc.SampleCount = 1;
-    desc.StaticImage = ovrFalse;
-
-
-    // create the swap texture sets 
-    if (ovr_CreateTextureSwapChainGL(hmdSession, &desc, &oculusSwapChain[0]) != ovrSuccess ||
-      ovr_CreateTextureSwapChainGL(hmdSession, &desc, &oculusSwapChain[1]) != ovrSuccess)
-    {
-      //common->Warning("iVr::HMDInitializeDistortion unable to create OVR swap texture set.\n VR mode is DISABLED.\n");
-      //game->isVR = false;
-
-    }
-
-    unsigned int texId = 0;
-    int length = 0;
-
-    for (int j = 0; j < 2; j++)
-    {
-      ovr_GetTextureSwapChainLength(hmdSession, oculusSwapChain[j], &length);
-      for (int i = 0; i < length; ++i)
-      {
-        ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[j], 0, &texId);
-        //oculusSwapChainTexId[j] = texId;
-
-        gl::glBindTexture(gl::GL_TEXTURE_2D, texId);
-        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
-        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
-        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
-        gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
-      }
-    }
-
-    ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[0]);
-    ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[1]);
-
-    gl::glGenFramebuffers(1, &oculusFboId);
-    gl::glGenTextures(1, &ocululsDepthTexID);
-
-    gl::glBindTexture(gl::GL_TEXTURE_2D, ocululsDepthTexID);
-    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MIN_FILTER, gl::GL_LINEAR);
-    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_MAG_FILTER, gl::GL_LINEAR);
-    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_S, gl::GL_CLAMP_TO_EDGE);
-    gl::glTexParameteri(gl::GL_TEXTURE_2D, gl::GL_TEXTURE_WRAP_T, gl::GL_CLAMP_TO_EDGE);
-
-    gl::glTexImage2D(gl::GL_TEXTURE_2D, 0, gl::GL_DEPTH_COMPONENT24, renderTarget.w, renderTarget.h, 0, gl::GL_DEPTH_COMPONENT, gl::GL_UNSIGNED_INT, NULL);
-
+  for (int eye = 0; eye < 2; eye++)
+  {
+    renderTarget = ovr_GetFovTextureSize(hmdSession, (ovrEyeType)eye, hmdDesc.DefaultEyeFov[eye], 1.0f);
+    vrWorldEye[eye] = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
+    vrWorldEye[eye].Commit();
+  }
+  vrTV = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
+  vrDRC = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
+  vrTV.Commit();
+  vrDRC.Commit();
 }
 
 void
@@ -340,76 +483,93 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
 
    //gl::wglSwapIntervalEXT(0);
 
-   gl::GLuint curTexId;
-   int curIndex;
-
-   ovr_GetTextureSwapChainCurrentIndex(hmdSession, oculusSwapChain[0], &curIndex);
-   ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[0], curIndex, &curTexId);
-
-   gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, oculusFboId);
-   gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_COLOR_ATTACHMENT0, gl::GL_TEXTURE_2D, curTexId, 0);
-   gl::glFramebufferTexture2D(gl::GL_FRAMEBUFFER, gl::GL_DEPTH_ATTACHMENT, gl::GL_TEXTURE_2D, ocululsDepthTexID, 0);
-
-   ovrRecti viewport;
-   viewport.Pos.x = 0;
-   viewport.Pos.y = 0;
-   viewport.Size = renderTarget;
-   gl::glViewport(0, 0, renderTarget.w, renderTarget.h);
-   gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-   if (drawTV)
+   ovrSessionStatus ss;
+   ovr_GetSessionStatus(hmdSession, &ss);
+   if (ss.ShouldRecenter)
+     ovr_RecenterTrackingOrigin(hmdSession);
+   if (ss.IsVisible)
    {
+     ovrInputState t;
+     ovr_GetInputState(hmdSession, ovrControllerType_Touch, &t);
+
+     vrTV.SetAndClearRenderSurface();
      drawScanBuffer(tvBuffer);
-   }
-   else if (drawDRC)
-   {
+     vrTV.Commit();
+
+     ovrTrackingState s = ovr_GetTrackingState(hmdSession, ovr_GetPredictedDisplayTime(hmdSession, 0), true);
+
+     vrDRC.SetAndClearRenderSurface();
      drawScanBuffer(drcBuffer);
-   }
+     vrDRC.Commit();
 
-   ovr_GetTextureSwapChainCurrentIndex(hmdSession, oculusSwapChain[1], &curIndex);
-   ovr_GetTextureSwapChainBufferGL(hmdSession, oculusSwapChain[1], curIndex, &curTexId);
+     ovrLayerQuad ltv, ltv2, ldrc;
+     ltv.Header.Type = ovrLayerType_Quad;
+     ltv.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+     ltv.ColorTexture = vrTV.TextureChain;
+     ltv.Viewport = vrTV.viewport;
+     ltv.QuadSize.x = 3.0f; // metres
+     ltv.QuadSize.y = ltv.QuadSize.x * 9.0f / 16.0f; // metres
+     ltv.QuadPoseCenter.Position.x = 0; // metres
+     ltv.QuadPoseCenter.Position.y = 0; // metres
+     ltv.QuadPoseCenter.Position.z = -1.5f; // metres (negative means in front of us)
+     ltv.QuadPoseCenter.Orientation.w = 1;
+     ltv.QuadPoseCenter.Orientation.x = 0;
+     ltv.QuadPoseCenter.Orientation.y = 0;
+     ltv.QuadPoseCenter.Orientation.z = 0;
 
-   // Submit frame with one layer we have.
+     // draw another one behind us
+     ltv2 = ltv;
+     ltv2.QuadPoseCenter.Orientation.w = 0;
+     ltv2.QuadPoseCenter.Orientation.y = 1;
+     ltv2.QuadPoseCenter.Position.z = -ltv.QuadPoseCenter.Position.z;
 
-   ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[0]);
-   ovr_CommitTextureSwapChain(hmdSession, oculusSwapChain[1]);
+     // Gamepad layer is attatched to left hand
+     ldrc.Header.Type = ovrLayerType_Quad;
+     ldrc.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+     ldrc.ColorTexture = vrDRC.TextureChain;
+     ldrc.Viewport = vrDRC.viewport;
+     ldrc.QuadSize.x = 0.136837359f; // metres
+     ldrc.QuadSize.y = ldrc.QuadSize.x * 9.0f / 16.0f; // metres
+     OVR::Posef p;
+     if (s.HandStatusFlags[0] & ovrStatus_PositionTracked | ovrStatus_OrientationTracked)
+     {
+       p = s.HandPoses[0].ThePose;
+       OVR::Vector3f o = { ldrc.QuadSize.x / 2 + 0.035916f, 0, 0.055f };
+       p.Translation += p.Rotate(o);
+     }
+     else
+     {
+       p.Translation.x = 0; // metres
+       p.Translation.y = 0; // metres
+       p.Translation.z = -0.4f; // metres (negative means in front of us)
+       p.Rotation.w = 1;
+       p.Rotation.x = 0;
+       p.Rotation.y = 0;
+       p.Rotation.z = 0;
+     }
+     OVR::Vector3f v = { -90 * MATH_FLOAT_DEGREETORADFACTOR, 0, 0 };
+     OVR::Quatf r;
+     r = OVR::Quatf::FromRotationVector(v);
+     p.Rotation *= r;
+     ldrc.QuadPoseCenter = p;
 
-
-   ovrLayerQuad lg, lg2;
-   lg.Header.Type = ovrLayerType_Quad;
-   lg.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
-   lg.ColorTexture = oculusSwapChain[0];
-   lg.Viewport = viewport;
-   lg.QuadSize.x = 3.0f; // metres
-   lg.QuadSize.y = lg.QuadSize.x * 3.0f / 4.0f; // metres
-   lg.QuadPoseCenter.Position.x = 0; // metres
-   lg.QuadPoseCenter.Position.y = 0; // metres
-   lg.QuadPoseCenter.Position.z = -1.5f; // metres (negative means in front of us)
-   lg.QuadPoseCenter.Orientation.w = 1;
-   lg.QuadPoseCenter.Orientation.x = 0;
-   lg.QuadPoseCenter.Orientation.y = 0;
-   lg.QuadPoseCenter.Orientation.z = 0;
-
-   // draw another one behind us
-   lg2 = lg;
-   lg2.QuadPoseCenter.Orientation.w = 0;
-   lg2.QuadPoseCenter.Orientation.y = 1;
-   lg2.QuadPoseCenter.Position.z = -lg.QuadPoseCenter.Position.z;
-
-   ovrLayerHeader* LayerList[2];
-   LayerList[0] = &lg.Header;
-   LayerList[1] = &lg2.Header;
-   //common->Printf( "Frame Submitting 2D frame # %d\n", idLib::frameNumber );
-   ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 2);
-   if (result == ovrSuccess_NotVisible)
-   {
-   }
-   else if (result == ovrError_DisplayLost)
-   {
-     //common->Warning("Vr_GL.cpp HMDRender : Display Lost when submitting oculus layer.\n");
-   }
-   else if (OVR_FAILURE(result))
-   {
-     //common->Warning("Vr_GL.cpp HMDRender : Failed to submit oculus layer. (result %d) \n", result);
+     ovrLayerHeader* LayerList[3];
+     LayerList[0] = &ltv.Header;
+     LayerList[1] = &ltv2.Header;
+     LayerList[2] = &ldrc.Header;
+     //common->Printf( "Frame Submitting 2D frame # %d\n", idLib::frameNumber );
+     ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 3);
+     if (result == ovrSuccess_NotVisible)
+     {
+     }
+     else if (result == ovrError_DisplayLost)
+     {
+       //common->Warning("Vr_GL.cpp HMDRender : Display Lost when submitting oculus layer.\n");
+     }
+     else if (OVR_FAILURE(result))
+     {
+       //common->Warning("Vr_GL.cpp HMDRender : Failed to submit oculus layer. (result %d) \n", result);
+     }
    }
 
    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, 0);
