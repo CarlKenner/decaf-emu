@@ -137,8 +137,8 @@ DecafSDLOpenGL::InitOculusTextures()
     vrWorldEye[eye] = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
     vrWorldEye[eye].Commit();
   }
-  vrTV = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
-  vrDRC = TextureBuffer(hmdSession, true, true, renderTarget.w, renderTarget.h, 1, NULL);
+  vrTV = TextureBuffer(hmdSession, true, true, 1920, 1080, 1, NULL);
+  vrDRC = TextureBuffer(hmdSession, true, true, 864, 480, 1, NULL);
   vrTV.Commit();
   vrDRC.Commit();
 }
@@ -562,7 +562,10 @@ DecafSDLOpenGL::initialise(int width, int height)
 
    // Start graphics thread
    if (!config::gpu::force_sync) {
-      SDL_GL_SetSwapInterval(1);
+      if (hmdSession)
+         SDL_GL_SetSwapInterval(0);
+      else
+         SDL_GL_SetSwapInterval(1);
 
       mGraphicsThread = std::thread{
          [this]() {
