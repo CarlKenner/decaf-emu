@@ -229,7 +229,7 @@ initEvents()
    sWaitTimeStampQueue = coreinit::internal::sysAlloc<OSThreadQueue>();
    sFlipThreadQueue = coreinit::internal::sysAlloc<OSThreadQueue>();
 
-   auto ticks = static_cast<OSTime>(OSGetSystemInfo()->busSpeed / 4) / 60;
+   auto ticks = static_cast<OSTime>(OSGetSystemInfo()->busSpeed / 4) / 90;
    OSCreateAlarm(sVsyncAlarm);
    OSSetPeriodicAlarm(sVsyncAlarm, OSGetTime(), ticks, sVsyncAlarmHandler);
 }
