@@ -25,14 +25,15 @@ unsigned int
 getTouchButton(vpad::Core button)
 {
   switch (button) {
+  // Pushing the thumbstick without your thumb on top counts as the DPad.
   case vpad::Core::Up:
-    return false;
+    return !(vri.Touches & ovrTouch_LThumb) && (vri.Thumbstick[0].y > 0.5f);
   case vpad::Core::Down:
-    return false;
+    return !(vri.Touches & ovrTouch_LThumb) && (vri.Thumbstick[0].y < -0.5f);
   case vpad::Core::Left:
-    return false;
+    return !(vri.Touches & ovrTouch_LThumb) && (vri.Thumbstick[0].x < -0.5f);
   case vpad::Core::Right:
-    return false;
+    return !(vri.Touches & ovrTouch_LThumb) && (vri.Thumbstick[0].x > 0.5f);
   case vpad::Core::A:
     return vri.Buttons & ovrButton_A;
   case vpad::Core::B:
