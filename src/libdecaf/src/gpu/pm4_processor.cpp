@@ -115,6 +115,9 @@ Pm4Processor::handlePacketType3(pm4::type3::Header header, const gsl::span<uint3
    case pm4::type3::DECAF_SET_SWAP_INTERVAL:
       decafSetSwapInterval(pm4::read<pm4::DecafSetSwapInterval>(reader));
       break;
+   case pm4::type3::DECAF_SET_SHADER:
+     decafSetShader(pm4::read<pm4::DecafSetShader>(reader));
+     break;
    case pm4::type3::DRAW_INDEX_AUTO:
       drawIndexAuto(pm4::read<pm4::DrawIndexAuto>(reader));
       break;

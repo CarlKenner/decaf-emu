@@ -2,9 +2,12 @@
 #include "gx2_debug.h"
 #include "gx2_shaders.h"
 #include "gpu/pm4_writer.h"
+#include <common/debuglog.h>
 
 namespace gx2
 {
+
+static GX2VertexShader *sVertexShader = NULL;
 
 uint32_t
 GX2CalcGeometryShaderInputRingBufferSize(uint32_t ringItemSize)
@@ -44,6 +47,17 @@ GX2SetFetchShader(GX2FetchShader *shader)
 void
 GX2SetVertexShader(GX2VertexShader *shader)
 {
+   // The important parts of the shader are passed via pm4 commands to the GPU registers.
+   // They are read from the registers in GLDriver::checkActiveShader() in opengl_shader.cpp.
+   // Which is called by checkReadyDraw() just before we draw a primitive.
+   // It might or might not create a new OpenGL shader.
+
+   {
+      be_ptr<GX2VertexShader> ptr;
+      ptr.setPointer(shader);
+      pm4::write(pm4::DecafSetShader{ ptr.getAddress() });
+   }
+   sVertexShader = shader;
    auto ringItemsize = shader->ringItemsize.value();
    auto pa_cl_vs_out_cntl = shader->regs.pa_cl_vs_out_cntl.value();
 
@@ -317,6 +331,39 @@ GX2SetVertexUniformReg(uint32_t offset,
                        uint32_t count,
                        be_val<uint32_t> *data)
 {
+   if (false && sVertexShader)
+   {
+     for (unsigned i = 0; i < sVertexShader->uniformVarCount; i++)
+     {
+       GX2UniformVar v = *sVertexShader->uniformVars.get();
+       GX2ShaderVarType t = v.type;
+
+       if (v.type == GX2ShaderVarType::Matrix4x4)
+       {
+         if (strcmp(v.name.get(), "gmWVP") == 0 || strcmp(v.name.get(), "gmViewProj") == 0 || strcmp(v.name.get(), "gmShw") == 0 || strcmp(v.name.get(), "gProj") == 0) {
+           return;
+         }
+         if (strcmp(v.name.get(), "Q") == 0 || strcmp(v.name.get(), "wvp") == 0 || strcmp(v.name.get(), "proj") == 0 || strcmp(v.name.get(), "gMat") == 0) {
+           return;
+         }
+         if (strcmp(v.name.get(), "projMtx") == 0) {
+           break;
+         }
+         if (strcmp(v.name.get(), "projMat") == 0) {
+           break;
+         }
+         if (strcmp(v.name.get(), "gProjInv") == 0 || strcmp(v.name.get(), "u_vpMtx") == 0) {
+           return;
+         }
+         if (strcmp(v.name.get(), "gInv") == 0) {
+           return;
+         }
+
+         debugPrint(v.name.get());
+       }
+     }
+   }
+
    auto loop = offset >> 16;
    if (loop) {
       auto id = static_cast<latte::Register>(latte::Register::SQ_LOOP_CONST_VS_0 + 4 * loop);
@@ -359,11 +406,28 @@ GX2SetPixelUniformReg(uint32_t offset,
    }
 }
 
+/**
+* Specifies the block of constants that the current Vertex Shader (set by GX2SetVertexShader) will use.
+* The constants include things like the projection matrix, view matrix, etc. that are the same for all vertices.
+* Many shaders use more than one block of constants.
+* Here we just pass the data via the pm4.
+* The actual implementation is in opengl_shader.cpp's GLDriver::checkActiveUniforms() which is called just before drawing a set of primitives.
+*
+* \param location 0 to 15 (but often starts from 1), and must match the "offset" field of a uniform block in the GX2VertexShader struct.
+* It indicates which one of several constant blocks that a Shader has, we're proving in this call.
+* \param size The size in bytes of the uniform block, but the game will sometimes pass in a value much larger than the real size,
+* because the Wii U hardware doesn't care. We round it up to a multiple of 256, then AND it with 0x1FF00.
+* \param data A pointer to the block of constants in the Wii U's RAM. It must be 256-byte aligned. The contents are little-endian.
+*/
 void
 GX2SetVertexUniformBlock(uint32_t location,
                          uint32_t size,
                          const void *data)
 {
+   std::string s;
+   s = fmt::format("GX2SetVertexUniformBlock i = {}, size {}", location, size);
+   debugPrint(s);
+   //return;
    decaf_check((mem::untranslate(data) & 0x000000FF) == 0);
 
    pm4::SetVtxResource res;

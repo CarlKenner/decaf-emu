@@ -11,6 +11,7 @@
 #include "libdecaf/decaf_graphics.h"
 #include "libdecaf/decaf_opengl.h"
 #include "opengl_resource.h"
+#include "modules/gx2/gx2_shaders.h"
 
 #include <chrono>
 #include <common/log.h>
@@ -94,6 +95,7 @@ struct VertexShader : public Shader
    uint32_t lastUniformUpdate = 0;
    std::string code;
    std::string disassembly;
+   gx2::GX2VertexShader* gx2VertexShader;
 };
 
 struct PixelShader : public Shader
@@ -334,6 +336,7 @@ private:
    void decafOSScreenFlip(const pm4::DecafOSScreenFlip &data) override;
    void decafCopySurface(const pm4::DecafCopySurface &data) override;
    void decafSetSwapInterval(const pm4::DecafSetSwapInterval &data) override;
+   void decafSetShader(const pm4::DecafSetShader &data) override;
    void drawIndexAuto(const pm4::DrawIndexAuto &data) override;
    void drawIndex2(const pm4::DrawIndex2 &data) override;
    void drawIndexImmd(const pm4::DrawIndexImmd &data) override;
@@ -487,6 +490,7 @@ private:
    std::thread mThread;
    unsigned mSwapInterval = 1;
    SwapFunction mSwapFunc;
+   gx2::GX2VertexShader *mVertexShader;
 
    bool mViewportDirty = false;
    bool mDepthRangeDirty = false;

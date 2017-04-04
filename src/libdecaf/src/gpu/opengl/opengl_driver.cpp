@@ -221,6 +221,14 @@ GLDriver::decafOSScreenFlip(const pm4::DecafOSScreenFlip &data)
    decafSwapBuffers(pm4::DecafSwapBuffers {});
 }
 
+void
+GLDriver::decafSetShader(const pm4::DecafSetShader &data)
+{
+  be_ptr<gx2::GX2VertexShader> p;
+  p.setAddress(data.shader);
+  mVertexShader = p.get();
+}
+
 // TODO: Move all these GL things into a common place!
 static gl::GLenum
 getTextureTarget(latte::SQ_TEX_DIM dim)

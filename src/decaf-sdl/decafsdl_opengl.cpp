@@ -278,6 +278,8 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
                                 Viewport &drcViewport,
                                 gl::GLuint drcBuffer)
 {
+   VR_NewVRFrame();
+
    // Set up some needed GL state
    gl::glColorMaski(0, gl::GL_TRUE, gl::GL_TRUE, gl::GL_TRUE, gl::GL_TRUE);
    gl::glDisablei(gl::GL_BLEND, 0);
@@ -311,11 +313,25 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      drawScanBuffer(tvBuffer);
      vrTV.Commit();
 
-     ovrTrackingState s = ovr_GetTrackingState(hmdSession, ovr_GetPredictedDisplayTime(hmdSession, 0), true);
+     vrWorldEye[1].SetAndClearRenderSurface();
+     drawScanBuffer(tvBuffer);
+     vrWorldEye[1].Commit();
 
      vrDRC.SetAndClearRenderSurface();
      drawScanBuffer(drcBuffer);
      vrDRC.Commit();
+
+     ovrLayerEyeFov lworld;
+     lworld.Header.Type = ovrLayerType_EyeFov;
+     lworld.Header.Flags = ovrLayerFlag_TextureOriginAtBottomLeft;
+     lworld.ColorTexture[0] = vrWorldEye[0].TextureChain;
+     lworld.ColorTexture[1] = vrWorldEye[1].TextureChain;
+     lworld.Viewport[0] = vrWorldEye[0].viewport;
+     lworld.Viewport[1] = vrWorldEye[1].viewport;
+     lworld.Fov[0] = hmdDesc.DefaultEyeFov[0];
+     lworld.Fov[1] = hmdDesc.DefaultEyeFov[1];
+     lworld.RenderPose[0] = g_eye_poses[0];
+     lworld.RenderPose[1] = g_eye_poses[1];
 
      ovrLayerQuad ltv, ltv2, ldrc, lfinger, ltouch;
      ltv.Header.Type = ovrLayerType_Quad;
@@ -323,7 +339,7 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      ltv.ColorTexture = vrTV.TextureChain;
      ltv.Viewport = vrTV.viewport;
      ltv.QuadSize.x = 3.0f; // metres
-     ltv.QuadSize.y = ltv.QuadSize.x * 9.0f / 16.0f; // metres
+     ltv.QuadSize.y = ltv.QuadSize.x * 1; // 9.0f / 16.0f; // metres
      ltv.QuadPoseCenter.Position.x = 0; // metres
      ltv.QuadPoseCenter.Position.y = 0; // metres
      ltv.QuadPoseCenter.Position.z = -1.5f; // metres (negative means in front of us)
@@ -345,7 +361,10 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      ldrc.Viewport = vrDRC.viewport;
      ldrc.QuadSize.x = 0.136837359f; // metres
      ldrc.QuadSize.y = ldrc.QuadSize.x * 9.0f / 16.0f; // metres
+
+     ovrTrackingState s = ovr_GetTrackingState(hmdSession, ovr_GetPredictedDisplayTime(hmdSession, 0), false);
      OVR::Posef p;
+
      if (s.HandStatusFlags[0] & ovrStatus_PositionTracked | ovrStatus_OrientationTracked)
      {
        p = s.HandPoses[0].ThePose;
@@ -429,13 +448,14 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
        ltouch.Header.Type = ovrLayerType_Disabled;
 #endif
 
-     ovrLayerHeader* LayerList[5];
-     LayerList[0] = &ltv.Header;
-     LayerList[1] = &ltv2.Header;
-     LayerList[2] = &ldrc.Header;
-     LayerList[3] = &lfinger.Header;
+     ovrLayerHeader* LayerList[6];
+     LayerList[0] = &lworld.Header;
+     LayerList[1] = NULL; // &ltv.Header;
+     LayerList[2] = NULL; // &ltv2.Header;
+     LayerList[3] = &ldrc.Header;
+     LayerList[4] = &lfinger.Header;
      //LayerList[4] = &ltouch.Header;
-     ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 4);
+     ovrResult result = ovr_SubmitFrame(hmdSession, 0, NULL, LayerList, 5);
      if (result == ovrSuccess_NotVisible)
      {
      }
@@ -445,6 +465,10 @@ DecafSDLOpenGL::drawScanBuffers(Viewport &tvViewport,
      else if (OVR_FAILURE(result))
      {
      }
+   }
+   else
+   {
+      headRotation.setIdentity();
    }
 
    gl::glBindFramebuffer(gl::GL_FRAMEBUFFER, 0);

@@ -256,6 +256,21 @@ struct DecafCopySurface
    }
 };
 
+struct DecafSetShader
+{
+  static const auto Opcode = type3::DECAF_SET_SHADER;
+
+  uint32_t shader;
+
+  template<typename Serialiser>
+  void serialise(Serialiser &se)
+  {
+    se(shader);
+  }
+};
+
+
+
 struct DrawIndexAuto
 {
    static const auto Opcode = type3::DRAW_INDEX_AUTO;

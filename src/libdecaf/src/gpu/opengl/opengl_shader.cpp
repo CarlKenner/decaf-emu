@@ -7,7 +7,9 @@
 #include "gpu/microcode/latte_disassembler.h"
 #include "opengl_constants.h"
 #include "opengl_driver.h"
+#include "VertexShaderManager.h"
 
+#include <common/debuglog.h>
 #include <common/decaf_assert.h>
 #include <common/log.h>
 #include <common/murmur3.h>
@@ -26,7 +28,8 @@ namespace opengl
 
 // TODO: This is really some kind of 'nsight compat mode'...  Maybe
 //  it should even be a configurable option (related to force_sync).
-static const auto USE_PERSISTENT_MAP = true;
+// Disable it for VR mode.
+static const auto USE_PERSISTENT_MAP = false;
 
 // This represents the number of bytes of padding to attach to the end
 //  of an attribute buffer.  This is neccessary for cases where the game
@@ -251,6 +254,7 @@ bool GLDriver::checkActiveShader()
     && mActiveShader->fetch && !mActiveShader->fetch->needRebuild && mActiveShader->fetchKey == fsShaderKey
     && mActiveShader->vertex && !mActiveShader->vertex->needRebuild && mActiveShader->vertexKey == vsShaderKey
     && (!mActiveShader->pixel || !mActiveShader->pixel->needRebuild) && mActiveShader->pixelKey == psShaderKey) {
+      mActiveShader->vertex->gx2VertexShader = mVertexShader;
       // We already have the current shader bound, nothing special to do.
       return true;
    }
@@ -420,6 +424,8 @@ bool GLDriver::checkActiveShader()
          }
       }
 
+      vertexShader->gx2VertexShader = mVertexShader;
+
       pipeline.vertex = vertexShader;
       pipeline.vertex->refCount++;
       pipeline.vertexKey = vsShaderKey;
@@ -549,6 +555,14 @@ GLDriver::countModifiedUniforms(latte::Register firstReg,
    return 0;
 }
 
+/**
+* Pass the constants the game has set to the vertex, geometry, and pixel shaders.
+* The constants include things like the projection matrix, view matrix, etc. that are the same for all vertices.
+* In sq_config.DX9_CONSTS() mode, the constants will be in individual registers, otherwise they are in uniform blocks.
+* This is called just before drawing a set of primitives, after checking the active shaders.
+*
+* The actual uniform constants were set by the game in gx2_shaders.cpp
+*/
 bool GLDriver::checkActiveUniforms()
 {
    auto sq_config = getRegister<latte::SQ_CONFIG>(latte::Register::SQ_CONFIG);
@@ -572,7 +586,6 @@ bool GLDriver::checkActiveUniforms()
 
       if (mActiveShader->pixel && mActiveShader->pixel->object) {
          auto uploadCount = countModifiedUniforms(latte::Register::SQ_ALU_CONSTANT0_0, mActiveShader->pixel->lastUniformUpdate);
-
          if (uploadCount > 0) {
             auto values = reinterpret_cast<float *>(&mRegisters[latte::Register::SQ_ALU_CONSTANT0_0 / 4]);
             gl::glProgramUniform4fv(mActiveShader->pixel->object, mActiveShader->pixel->uniformRegisters, uploadCount, values);
@@ -582,12 +595,30 @@ bool GLDriver::checkActiveUniforms()
       }
    } else {
       if (mActiveShader->vertex && mActiveShader->vertex->object) {
+#if 0
+         for (int j = 0; j < mActiveShader->vertex->gx2VertexShader->uniformBlockCount; j++)
+         {
+            std::string s;
+            s = fmt::format("j = {}, offset {}, size {}, name {}", j, mActiveShader->vertex->gx2VertexShader->uniformBlocks[j].offset, mActiveShader->vertex->gx2VertexShader->uniformBlocks[j].size, mActiveShader->vertex->gx2VertexShader->uniformBlocks[j].name.get());
+            debugPrint(s);
+         }
+#endif
          for (auto i = 0u; i < latte::MaxUniformBlocks; ++i) {
             auto sq_alu_const_cache_vs = getRegister<uint32_t>(latte::Register::SQ_ALU_CONST_CACHE_VS_0 + 4 * i);
             auto sq_alu_const_buffer_size_vs = getRegister<uint32_t>(latte::Register::SQ_ALU_CONST_BUFFER_SIZE_VS_0 + 4 * i);
             auto used = mActiveShader->vertex->usedUniformBlocks[i];
             auto bufferObject = gl::GLuint { 0 };
 
+#if 0
+            if (used)
+            {
+               std::string s;
+               s = fmt::format("i = {}, used {}, size {}", i, used, sq_alu_const_buffer_size_vs << 8);
+               debugPrint(s);
+            }
+#endif
+
+            DataBuffer* buffer;
             if (!used || !sq_alu_const_buffer_size_vs) {
                bufferObject = 0;
             } else {
@@ -598,7 +629,7 @@ bool GLDriver::checkActiveUniforms()
                decaf_assert(size <= gpu::opengl::MaxUniformBlockSize,
                   fmt::format("Active uniform block with data size {} greater than what OpenGL supports {}", size, MaxUniformBlockSize));
 
-               auto buffer = getDataBuffer(addr, size, true, false);
+               buffer = getDataBuffer(addr, size, true, false);
 
                bufferObject = buffer->object;
             }
@@ -606,7 +637,55 @@ bool GLDriver::checkActiveUniforms()
             // Bind (or unbind) block
             if (mUniformBlockCache[i].vsObject != bufferObject) {
                mUniformBlockCache[i].vsObject = bufferObject;
-               gl::glBindBufferBase(gl::GL_UNIFORM_BUFFER, i, bufferObject);
+               int found = -1;
+               if (bufferObject && mActiveShader->vertex->gx2VertexShader && mActiveShader->vertex->gx2VertexShader->uniformBlockCount <= 16)
+                  for (unsigned j = 0; j < mActiveShader->vertex->gx2VertexShader->uniformBlockCount; j++)
+                  {
+                     if (mActiveShader->vertex->gx2VertexShader->uniformBlocks[j].offset == i)
+                        found = j;
+                  }
+               //std::string s;
+               //if (found >= 0)
+               //   s = fmt::format("i = {}, offset = {}, j = {}, size {}, sizeX {}, name {}", i, mActiveShader->vertex->gx2VertexShader->uniformBlocks[found].offset, found, mActiveShader->vertex->gx2VertexShader->uniformBlocks[found].size, sq_alu_const_buffer_size_vs << 8, mActiveShader->vertex->gx2VertexShader->uniformBlocks[found].name.get());
+               //else
+               //   s = "not found!";
+               //debugPrint(s);
+
+               if (bufferObject && found>=0 && strcmp(mActiveShader->vertex->gx2VertexShader->uniformBlocks[found].name, "U_Static") == 0)
+               {
+                  float gmView[12], gmProj[16], gmViewProj[16], gmInvView[12], gEyePos[3], gEyeVec[3], gViewYVec[3];
+                  memcpy(gmView, mem::translate<char>(buffer->cpuMemStart) + 0 * sizeof(float), 12 * sizeof(float));
+                  memcpy(gmProj, mem::translate<char>(buffer->cpuMemStart) + 12 * sizeof(float), 16 * sizeof(float));
+                  memcpy(gmViewProj, mem::translate<char>(buffer->cpuMemStart) + 28 * sizeof(float), 16 * sizeof(float));
+                  memcpy(gmInvView, mem::translate<char>(buffer->cpuMemStart) + 44 * sizeof(float), 12 * sizeof(float));
+                  memcpy(gEyePos, mem::translate<char>(buffer->cpuMemStart) + 56 * sizeof(float), 3 * sizeof(float));
+                  memcpy(gEyeVec, mem::translate<char>(buffer->cpuMemStart) + 60 * sizeof(float), 3 * sizeof(float));
+                  memcpy(gViewYVec, mem::translate<char>(buffer->cpuMemStart) + 72 * sizeof(float), 3 * sizeof(float));
+
+                  SetProjectionConstants(gmView, gmProj, gmViewProj, gmInvView, gEyePos, gEyeVec, gViewYVec);
+
+                  float blank[100] = {0};
+                  //gl::glNamedBufferSubData(bufferObject, 0, 100 * sizeof(float), b);
+                  //memset(gmViewProj, 0, 16 * sizeof(float));
+
+                  gl::glBindBufferBase(gl::GL_UNIFORM_BUFFER, i, bufferObject);
+                  gl::glNamedBufferSubData(bufferObject, 0 * sizeof(float), 12 * sizeof(float), gmView);
+                  gl::glNamedBufferSubData(bufferObject, 12 * sizeof(float), 16 * sizeof(float), gmProj);
+                  gl::glNamedBufferSubData(bufferObject, 28 * sizeof(float), 16 * sizeof(float), gmViewProj);
+                  gl::glNamedBufferSubData(bufferObject, 44 * sizeof(float), 12 * sizeof(float), gmInvView);
+                  gl::glNamedBufferSubData(bufferObject, 56 * sizeof(float), 3 * sizeof(float), gEyePos);
+                  gl::glNamedBufferSubData(bufferObject, 60 * sizeof(float), 3 * sizeof(float), gEyeVec);
+                  gl::glNamedBufferSubData(bufferObject, 72 * sizeof(float), 3 * sizeof(float), gViewYVec);
+
+                  //std::string s;
+                  //s = fmt::format("Block {}, offset {}, size {}, size2 {}", i, mActiveShader->vertex->gx2VertexShader->uniformBlocks[i].offset, mActiveShader->vertex->gx2VertexShader->uniformBlocks[i].size, );
+                  //debugPrint(s);
+                  
+               }
+               else
+               {
+                  gl::glBindBufferBase(gl::GL_UNIFORM_BUFFER, i, bufferObject);
+               }
             }
          }
       }

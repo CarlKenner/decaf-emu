@@ -20,6 +20,7 @@ protected:
    virtual void decafOSScreenFlip(const pm4::DecafOSScreenFlip &data) = 0;
    virtual void decafCopySurface(const pm4::DecafCopySurface &data) = 0;
    virtual void decafSetSwapInterval(const pm4::DecafSetSwapInterval &data) = 0;
+   virtual void decafSetShader(const pm4::DecafSetShader &data) = 0;
    virtual void drawIndexAuto(const pm4::DrawIndexAuto &data) = 0;
    virtual void drawIndex2(const pm4::DrawIndex2 &data) = 0;
    virtual void drawIndexImmd(const pm4::DrawIndexImmd &data) = 0;
