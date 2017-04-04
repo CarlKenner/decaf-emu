@@ -424,9 +424,9 @@ GX2SetVertexUniformBlock(uint32_t location,
                          uint32_t size,
                          const void *data)
 {
-   std::string s;
-   s = fmt::format("GX2SetVertexUniformBlock i = {}, size {}", location, size);
-   debugPrint(s);
+   //std::string s;
+   //s = fmt::format("GX2SetVertexUniformBlock i = {}, size {}", location, size);
+   //debugPrint(s);
    //return;
    decaf_check((mem::untranslate(data) & 0x000000FF) == 0);
 

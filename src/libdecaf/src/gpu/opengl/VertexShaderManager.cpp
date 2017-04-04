@@ -70,8 +70,8 @@ void SetProjectionConstants(float gmView[12], float gmProj[16], float gmViewProj
    for (int r = 0; r < 4; r++)
       for (int c = 0; c < 4; c++)
          oculus.data[r * 4 + c] = mOculus.M[r][c];
-   PrintMatrix4x4("oculus", oculus.data);
-   PrintMatrix4x4("proj", proj.data);
+   //PrintMatrix4x4("oculus", oculus.data);
+   //PrintMatrix4x4("proj", proj.data);
 
    proj.xx = oculus.xx; proj.zx = oculus.zx;
    proj.yy = oculus.yy; proj.zy = oculus.zy;
