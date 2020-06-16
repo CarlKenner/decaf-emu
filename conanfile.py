@@ -50,6 +50,7 @@ class DecafConan(ConanFile):
       'zlib': [True, False],
       'libuv': [True, False],
       'cares': [True, False],
+      'qt': [True, False],
    }
    default_options = {
       'silent': False,
@@ -60,6 +61,7 @@ class DecafConan(ConanFile):
       'zlib': True,
       'libuv': True,
       'cares': True,
+      'qt': True,
 
       'ffmpeg:shared': True,
    }
@@ -74,6 +76,8 @@ class DecafConan(ConanFile):
          ('openssl/1.1.1f', 'yes' if self.options.openssl else 'no'),
          ('sdl2/2.0.12@bincrafters/stable', 'yes' if self.options.sdl2 else 'no'),
          ('zlib/1.2.11', 'yes' if self.options.zlib else 'no'),
+         ('qt/5.15.0@bincrafters/stable', 'yes' if self.options.qt else 'no'),
+         ('qtsvg/5.15.0@bincrafters/stable', 'yes' if self.options.qt else 'no'),
       ]
       overrides = [
          'libpng/1.6.37',

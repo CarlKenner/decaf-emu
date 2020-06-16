@@ -11,7 +11,7 @@ public:
       QDialog(parent)
    {
       mUi.setupUi(this);
-      mUi.iconWidget->load(QString(":/images/logo"));
+      //mUi.iconWidget->load(QString(":/images/logo"));
       mUi.labelBuildInfo->setText(
          mUi.labelBuildInfo->text().arg(BUILD_FULLNAME, GIT_BRANCH, GIT_DESC,
                                         QString(BUILD_DATE).left(10)));

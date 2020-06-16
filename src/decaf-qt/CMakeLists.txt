@@ -51,7 +51,6 @@ target_link_libraries(decaf-qt
    qtadvanceddocking
    Qt5::Core
    Qt5::Concurrent
-   Qt5::Svg
    Qt5::Widgets
    Qt5::Xml)
 
@@ -80,12 +79,6 @@ if(MSVC)
    add_custom_command(
        TARGET decaf-qt POST_BUILD
        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-           $<TARGET_FILE:Qt5::Svg>
-           $<TARGET_FILE_DIR:decaf-qt>)
-
-   add_custom_command(
-       TARGET decaf-qt POST_BUILD
-       COMMAND ${CMAKE_COMMAND} -E copy_if_different
            $<TARGET_FILE:Qt5::Widgets>
            $<TARGET_FILE_DIR:decaf-qt>)
 
@@ -98,7 +91,6 @@ if(MSVC)
    install(FILES
       $<TARGET_FILE:Qt5::Core>
       $<TARGET_FILE:Qt5::Gui>
-      $<TARGET_FILE:Qt5::Svg>
       $<TARGET_FILE:Qt5::Widgets>
       $<TARGET_FILE:Qt5::Xml>
       DESTINATION "${DECAF_INSTALL_BINDIR}")

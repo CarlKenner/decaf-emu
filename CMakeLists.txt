@@ -135,7 +135,7 @@ if(DECAF_VALGRIND)
 endif()
 
 if(DECAF_QT)
-    find_package(Qt5 COMPONENTS Core Concurrent Widgets Svg Xml REQUIRED)
+    find_package(Qt5 COMPONENTS Core Concurrent Widgets Xml REQUIRED)
     add_definitions(-DDECAF_QT)
 endif()
 
