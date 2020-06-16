@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef WIN32_LEAN_AND_MEAN
+#undef WIN32_LEAN_AND_MEAN
+#endif
+
 #if defined(WIN32) || defined(_WIN32) || defined(_MSC_VER)
 #define PLATFORM_WINDOWS
 #elif __APPLE__
