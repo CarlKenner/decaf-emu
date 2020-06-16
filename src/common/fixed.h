@@ -1,5 +1,9 @@
 #pragma once
 #include "bitfield.h"
+#ifdef DOLPHIN
+template<class T>
+concept FloatingPoint = std::is_floating_point_v<T>;
+#endif
 #include <cnl/fixed_point.h>
 
 using ufixed_16_16_t = cnl::fixed_point<uint32_t, -16>;
