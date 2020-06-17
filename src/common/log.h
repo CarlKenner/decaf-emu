@@ -21,14 +21,29 @@ public:
    };
 
 public:
+#ifdef DOLPHIN
+   Logger()
+   {
+   }
+
+   Logger(Logger &other) :
+      mLogger(other.mLogger)
+   {
+   }
+
+   Logger(std::string name)
+   {
+   }
+#endif
+
    template<typename String, typename... Args>
-   inline void trace(const String &str, const Args & ... args)
+   inline void trace(const String &str, const Args &... args)
    {
       log(Level::trace, fmt::format(str, args...));
    }
 
    template<typename String, typename... Args>
-   inline void debug(const String &str, const Args & ... args)
+   inline void debug(const String &str, const Args &... args)
    {
       log(Level::debug, fmt::format(str, args...));
    }
@@ -106,6 +121,13 @@ private:
 private:
    std::shared_ptr<void> mLogger;
 };
+
+#ifdef DOLPHIN
+namespace spdlog
+{
+typedef Logger logger;
+}
+#endif
 
 extern Logger
 gLog;

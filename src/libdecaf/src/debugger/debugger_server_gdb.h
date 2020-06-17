@@ -7,7 +7,11 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#ifdef DOLPHIN
+#include <common/log.h>
+#else
 #include <spdlog/spdlog.h>
+#endif
 
 namespace debugger
 {
