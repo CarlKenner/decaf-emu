@@ -189,6 +189,9 @@ getWindowSystemExtensions(gpu::WindowSystemType wsiType, std::vector<const char*
 static vk::Instance
 createVulkanInstance(const gpu::WindowSystemInfo &wsi)
 {
+#ifdef DOLPHIN
+   Vulkan::LoadVulkanLibrary();
+#endif
    auto appInfo =
       vk::ApplicationInfo {
          "Decaf",
@@ -241,7 +244,13 @@ createVulkanInstance(const gpu::WindowSystemInfo &wsi)
    instanceCreateInfo.ppEnabledLayerNames = layers.data();
    instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
    instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-   return vk::createInstance(instanceCreateInfo);
+
+   vk::Instance result;
+   result = vk::createInstance(instanceCreateInfo);
+#ifdef DOLPHIN
+   Vulkan::LoadVulkanInstanceFunctions(result);
+#endif
+   return result;
 }
 
 static vk::PhysicalDevice
@@ -1027,6 +1036,9 @@ Driver::setWindowSystemInfo(const gpu::WindowSystemInfo &wsi)
    if (!device) {
       decaf_abort("createDevice failed");
    }
+#ifdef DOLPHIN
+   Vulkan::LoadVulkanDeviceFunctions(device);
+#endif
 
    auto queue = device.getQueue(queueFamilyIndex, 0);
    if (!queue) {
