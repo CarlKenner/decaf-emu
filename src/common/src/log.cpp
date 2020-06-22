@@ -11,31 +11,31 @@ Logger gLog;
 void
 Logger::log(Level lvl, std::string_view msg)
 {
-   if (mLogger) {
 #ifdef DOLPHIN
-      switch (lvl) {
-      case Level::trace:
-      case Level::debug:
-         DEBUG_LOG(WIIU, "%s", msg);
-         break;
-      case Level::info:
-         INFO_LOG(WIIU, "%s", msg);
-         break;
-      case Level::warn:
-         WARN_LOG(WIIU, "%s", msg);
-         break;
-      case Level::err:
-         ERROR_LOG(WIIU, "%s", msg);
-         break;
-      case Level::critical:
-         NOTICE_LOG(WIIU, "%s", msg);
-         break;
-      }
+   switch (lvl) {
+   case Level::trace:
+   case Level::debug:
+      DEBUG_LOG(WIIU, "%s", msg);
+      break;
+   case Level::info:
+      INFO_LOG(WIIU, "%s", msg);
+      break;
+   case Level::warn:
+      WARN_LOG(WIIU, "%s", msg);
+      break;
+   case Level::err:
+      ERROR_LOG(WIIU, "%s", msg);
+      break;
+   case Level::critical:
+      NOTICE_LOG(WIIU, "%s", msg);
+      break;
+   }
 #else
+   if (mLogger) {
       auto logger = reinterpret_cast<spdlog::logger *>(mLogger.get());
       logger->log(static_cast<spdlog::level::level_enum>(lvl), msg);
-#endif
    }
+#endif
 }
 
 bool
