@@ -1,7 +1,12 @@
 #pragma once
-#include <libdecaf/decaf_sound.h>
 #include <SDL.h>
+#include <libdecaf/decaf_sound.h>
+#ifdef DOLPHIN
+#include <common/log.h>
+#include <fmt/format.h>
+#else
 #include <spdlog/spdlog.h>
+#endif
 #include <vector>
 
 class DecafSDLSound : public decaf::SoundDriver

@@ -12,10 +12,14 @@
 #include <libconfig/config_toml.h>
 #include <libdecaf/decaf.h>
 #include <libdecaf/decaf_log.h>
+#ifdef DOLPHIN
+std::shared_ptr<Logger>
+   gCliLog;
+#else
 #include <spdlog/sinks/stdout_sinks.h>
-
 std::shared_ptr<spdlog::logger>
-gCliLog;
+   gCliLog;
+#endif
 
 using namespace decaf::input;
 
@@ -23,12 +27,12 @@ static excmd::parser
 getCommandLineParser()
 {
    excmd::parser parser;
-   using excmd::description;
-   using excmd::optional;
-   using excmd::default_value;
    using excmd::allowed;
-   using excmd::value;
+   using excmd::default_value;
+   using excmd::description;
    using excmd::make_default_value;
+   using excmd::optional;
+   using excmd::value;
 
    parser.global_options()
       .add_option("v,version",
@@ -42,59 +46,55 @@ getCommandLineParser()
                     value<std::string> {});
 
    auto frontend_options = parser.add_option_group("Frontend Options")
-      .add_option("config",
-                  description { "Specify path to configuration file." },
-                  value<std::string> {})
-      .add_option("force-sync",
-                  description { "Force rendering to sync with gpu flips." })
-      .add_option("display-layout",
-                  description { "Set the window display layout." },
-                  default_value<std::string> { "split" },
-                  allowed<std::string> { {
-                     "split", "toggle"
-                  } })
-      .add_option("display-mode",
-                  description { "Set the window display mode." },
-                  default_value<std::string> { "windowed" },
-                  allowed<std::string> { {
-                     "windowed", "fullscreen"
-                  } })
-      .add_option("display-stretch",
-                  description { "Enable display stretching, aspect ratio will not be maintained." })
-      .add_option("sound",
-                  description { "Enable sound output." });
+                              .add_option("config",
+                                          description { "Specify path to configuration file." },
+                                          value<std::string> {})
+                              .add_option("force-sync",
+                                          description { "Force rendering to sync with gpu flips." })
+                              .add_option("display-layout",
+                                          description { "Set the window display layout." },
+                                          default_value<std::string> { "split" },
+                                          allowed<std::string> { { "split", "toggle" } })
+                              .add_option("display-mode",
+                                          description { "Set the window display mode." },
+                                          default_value<std::string> { "windowed" },
+                                          allowed<std::string> { { "windowed", "fullscreen" } })
+                              .add_option("display-stretch",
+                                          description { "Enable display stretching, aspect ratio will not be maintained." })
+                              .add_option("sound",
+                                          description { "Enable sound output." });
 
    auto input_options = parser.add_option_group("Input Options")
-      .add_option("vpad0",
-                  description { "Select the input device for VPAD0." },
-                  make_default_value(config::input::vpad0));
+                           .add_option("vpad0",
+                                       description { "Select the input device for VPAD0." },
+                                       make_default_value(config::input::vpad0));
 
    auto test_options = parser.add_option_group("Test Options")
-      .add_option("timeout-ms",
-                  description { "Maximum time to run for before termination in milliseconds." },
-                  make_default_value(config::test::timeout_ms))
-      .add_option("timeout-frames",
-                  description { "Maximum number of frames to render before termination." },
-                  make_default_value(config::test::timeout_frames))
-      .add_option("dump-drc-frames",
-                  description { "Dump rendered DRC frames to file." })
-      .add_option("dump-tv-frames",
-                  description { "Dump rendered TV frames to file." })
-      .add_option("dump-frames-dir",
-                  description { "Folder to place dumped frames in" },
-                  make_default_value(config::test::dump_frames_dir));
+                          .add_option("timeout-ms",
+                                      description { "Maximum time to run for before termination in milliseconds." },
+                                      make_default_value(config::test::timeout_ms))
+                          .add_option("timeout-frames",
+                                      description { "Maximum number of frames to render before termination." },
+                                      make_default_value(config::test::timeout_frames))
+                          .add_option("dump-drc-frames",
+                                      description { "Dump rendered DRC frames to file." })
+                          .add_option("dump-tv-frames",
+                                      description { "Dump rendered TV frames to file." })
+                          .add_option("dump-frames-dir",
+                                      description { "Folder to place dumped frames in" },
+                                      make_default_value(config::test::dump_frames_dir));
 
    auto config_options = config::getExcmdGroups(parser);
 
    auto cmdPlay = parser.add_command("play")
-      .add_option_group(frontend_options)
-      .add_option_group(input_options)
-      .add_argument("target", value<std::string> {});
+                     .add_option_group(frontend_options)
+                     .add_option_group(input_options)
+                     .add_argument("target", value<std::string> {});
 
    auto cmdTest = parser.add_command("test")
-      .add_option_group(frontend_options)
-      .add_option_group(test_options)
-      .add_argument("target", value<std::string> {});
+                     .add_option_group(frontend_options)
+                     .add_option_group(test_options)
+                     .add_argument("target", value<std::string> {});
 
    for (auto group : config_options) {
       cmdPlay.add_option_group(group);
@@ -150,9 +150,9 @@ start(excmd::parser &parser,
       configPath = decaf::makeConfigPath("config.toml");
    }
 
-   auto cpuSettings = cpu::Settings { };
-   auto gpuSettings = gpu::Settings { };
-   auto decafSettings = decaf::Settings { };
+   auto cpuSettings = cpu::Settings {};
+   auto gpuSettings = gpu::Settings {};
+   auto decafSettings = decaf::Settings {};
 
    // If config file does not exist, create a default one.
    if (!platform::fileExists(configPath)) {
@@ -213,6 +213,9 @@ start(excmd::parser &parser,
    decaf::initialiseLogging(logFile);
 
    // Initialise frontend logger
+#ifdef DOLPHIN
+   gCliLog = decaf::makeLogger("decaf-cli");
+#else
    if (!decafSettings.log.to_stdout) {
       // Always do cli log to stdout
       gCliLog = decaf::makeLogger("decaf-cli",
@@ -222,6 +225,7 @@ start(excmd::parser &parser,
    }
 
    gCliLog->set_pattern("[%l] %v");
+#endif
    gCliLog->info("Target {}", target);
 
    if (configError.empty()) {
@@ -283,7 +287,9 @@ wWinMain(_In_ HINSTANCE hInstance,
    return start(parser, options);
 }
 #else
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv)
+{
    auto parser = getCommandLineParser();
    excmd::option_state options;
 
