@@ -866,7 +866,7 @@ createRenderPipeline(VulkanDisplayPipeline &displayPipeline,
    pipelineInfo.subpass = 0;
    pipelineInfo.basePipelineHandle = vk::Pipeline { };
    pipelineInfo.basePipelineIndex = -1;
-   displayPipeline.graphicsPipeline = device.createGraphicsPipeline(vk::PipelineCache { }, pipelineInfo);
+   displayPipeline.graphicsPipeline = (const vk::Pipeline)device.createGraphicsPipeline(vk::PipelineCache { }, pipelineInfo);
 
    return true;
 }
