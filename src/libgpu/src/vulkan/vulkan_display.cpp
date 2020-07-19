@@ -360,7 +360,7 @@ createDevice(vk::PhysicalDevice &physicalDevice, vk::SurfaceKHR &surface)
    for (auto &name : requiredExtensions) {
       auto hasExtension = false;
       for (auto &ext : supportedDeviceExtensions) {
-         if (iequals(name, ext.extensionName)) {
+         if (iequals(name, ext.extensionName.data())) {
             hasExtension = true;
             break;
          }
@@ -374,7 +374,7 @@ createDevice(vk::PhysicalDevice &physicalDevice, vk::SurfaceKHR &surface)
    for (auto name : optionalExtensions) {
       auto hasExtension = false;
       for (auto &ext : supportedDeviceExtensions) {
-         if (iequals(name, ext.extensionName)) {
+         if (iequals(name, ext.extensionName.data())) {
             hasExtension = true;
             break;
          }
@@ -866,8 +866,14 @@ createRenderPipeline(VulkanDisplayPipeline &displayPipeline,
    pipelineInfo.subpass = 0;
    pipelineInfo.basePipelineHandle = vk::Pipeline { };
    pipelineInfo.basePipelineIndex = -1;
-   displayPipeline.graphicsPipeline = (const vk::Pipeline)device.createGraphicsPipeline(vk::PipelineCache { }, pipelineInfo);
 
+   auto result = device.createGraphicsPipeline(vk::PipelineCache { },
+                                               pipelineInfo);
+   if (result.result != vk::Result::eSuccess) {
+      return false;
+   }
+
+   displayPipeline.graphicsPipeline = result.value;
    return true;
 }
 
