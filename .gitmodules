@@ -27,7 +27,9 @@
 	url = https://github.com/ocornut/imgui.git
 [submodule "libraries/cnl"]
 	path = libraries/cnl
-	url = https://github.com/johnmcfarlane/cnl
+	url = https://github.com/CarlKenner/cnl
+	branch = Dolphin
+	shallow = true
 [submodule "libraries/catch"]
 	path = libraries/catch
 	url = https://github.com/philsquared/Catch.git
