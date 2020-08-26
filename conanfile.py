@@ -73,15 +73,15 @@ class DecafConan(ConanFile):
          ('libpng/1.6.37', 'yes' if self.options.ffmpeg else 'no'),
          ('libcurl/7.69.1', 'yes' if self.options.curl else 'no'),
          ('libuv/1.34.2', 'yes' if self.options.libuv else 'no'),
-         ('openssl/1.1.1f', 'yes' if self.options.openssl else 'no'),
-         ('sdl2/2.0.12@bincrafters/stable', 'yes' if self.options.sdl2 else 'no'),
+         ('openssl/1.1.1g', 'yes' if self.options.openssl else 'no'),
+         ('sdl2/2.0.9@bincrafters/stable', 'yes' if self.options.sdl2 else 'no'),
          ('zlib/1.2.11', 'yes' if self.options.zlib else 'no'),
          ('qt/5.15.0@bincrafters/stable', 'yes' if self.options.qt else 'no'),
          ('qtsvg/5.15.0@bincrafters/stable', 'yes' if self.options.qt else 'no'),
       ]
       overrides = [
          'libpng/1.6.37',
-         'openssl/1.1.1d',
+         'openssl/1.1.1g',
          'zlib/1.2.11',
       ]
 
